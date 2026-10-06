@@ -1,0 +1,44 @@
+{
+  "name": "safewalk",
+  "version": "1.0.0",
+  "private": true,
+  "description": "SafeWalk — карта, маршруты и контакты для сопровождения",
+  "engines": {
+    "node": ">=24"
+  },
+  "main": "index.js",
+  "scripts": {
+    "prestart": "node scripts/start-auth.cjs",
+    "start": "expo start --lan --go",
+    "preweb": "node scripts/start-auth.cjs",
+    "web": "expo start --web --lan",
+    "preandroid": "node scripts/start-auth.cjs",
+    "android": "expo start --android --go",
+    "export": "expo export --platform all",
+    "api": "node server/auth.cjs",
+    "test": "node --test server/*.test.cjs",
+    "test:auth": "node --test server/auth.test.cjs",
+    "test:maps": "node --test server/maps.test.cjs"
+  },
+  "dependencies": {
+    "@expo/vector-icons": "^15.0.3",
+    "cookie-parser": "^1.4.7",
+    "cors": "^2.8.6",
+    "expo": "~57.0.26",
+    "expo-constants": "~57.0.20",
+    "expo-font": "~57.0.4",
+    "expo-location": "~57.0.20",
+    "expo-secure-store": "~57.0.4",
+    "expo-status-bar": "~57.0.1",
+    "express": "^5.2.1",
+    "express-rate-limit": "^8.7.0",
+    "helmet": "^8.3.0",
+    "leaflet": "^1.9.4",
+    "react": "19.2.3",
+    "react-dom": "19.2.3",
+    "react-native": "0.86.3",
+    "react-native-maps": "1.27.2",
+    "react-native-safe-area-context": "~5.7.0",
+    "react-native-web": "^0.21.0"
+  }
+}

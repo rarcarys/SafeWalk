@@ -1,0 +1,28 @@
+{
+  "expo": {
+    "name": "SafeWalk",
+    "slug": "safewalk",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "userInterfaceStyle": "light",
+    "ios": {
+      "supportsTablet": true
+    },
+    "web": {
+      "bundler": "metro",
+      "name": "SafeWalk",
+      "shortName": "SafeWalk"
+    },
+    "plugins": [
+      "expo-font",
+      "expo-secure-store",
+      [
+        "expo-location",
+        {
+          "locationWhenInUsePermission": "SafeWalk использует геопозицию для точки отправления на карте."
+        }
+      ],
+      "expo-status-bar"
+    ]
+  }
+}
