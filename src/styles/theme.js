@@ -5,5 +5,5 @@ export const colors = {
   canvas: '#f4f4f6',
   blue: '#3169e8',
   red: '#d43839',
-  white: '#ffffff'
+  white: '#ffffff',
 };

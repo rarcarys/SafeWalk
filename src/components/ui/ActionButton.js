@@ -9,17 +9,43 @@ export default function ActionButton({
   secondary,
   danger,
   icon,
-  busy
+  busy,
 }) {
   const color = secondary ? colors.ink : colors.white;
-  return <Pressable accessibilityRole="button" accessibilityLabel={title} onPress={onPress} disabled={busy} accessibilityState={{
-    busy: !!busy,
-    disabled: !!busy
-  }} style={({
-    pressed
-  }) => [s.actionButton, secondary && s.secondaryButton, danger && s.dangerButton, pressed && s.pressed]}>
-      {busy ? <ActivityIndicator color={color} size="small" /> : <>{icon && <Icon name={icon} size={18} color={color} />}<Text style={[s.actionText, {
-        color
-      }]}>{title}</Text></>}
-    </Pressable>;
+  return (
+    <Pressable
+      accessibilityRole="button"
+      accessibilityLabel={title}
+      onPress={onPress}
+      disabled={busy}
+      accessibilityState={{
+        busy: !!busy,
+        disabled: !!busy,
+      }}
+      style={({ pressed }) => [
+        s.actionButton,
+        secondary && s.secondaryButton,
+        danger && s.dangerButton,
+        pressed && s.pressed,
+      ]}
+    >
+      {busy ? (
+        <ActivityIndicator color={color} size="small" />
+      ) : (
+        <>
+          {icon && <Icon name={icon} size={18} color={color} />}
+          <Text
+            style={[
+              s.actionText,
+              {
+                color,
+              },
+            ]}
+          >
+            {title}
+          </Text>
+        </>
+      )}
+    </Pressable>
+  );
 }

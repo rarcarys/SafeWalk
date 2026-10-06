@@ -1,4 +1,4 @@
 import { registerRootComponent } from 'expo';
-import App from './SafeWalkApp';
+import App from './src/App';
 
 registerRootComponent(App);
