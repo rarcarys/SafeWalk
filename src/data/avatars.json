@@ -1,0 +1,10 @@
+[
+  { "id": "sun", "icon": "sun", "color": "#9c5a0a", "background": "#fff0cc" },
+  { "id": "moon", "icon": "moon", "color": "#6950a1", "background": "#eee7ff" },
+  { "id": "star", "icon": "star", "color": "#ab4d75", "background": "#ffe4ef" },
+  { "id": "heart", "icon": "heart", "color": "#b94444", "background": "#ffe5df" },
+  { "id": "coffee", "icon": "coffee", "color": "#806047", "background": "#f2e8dc" },
+  { "id": "feather", "icon": "feather", "color": "#34795e", "background": "#ddf3e8" },
+  { "id": "music", "icon": "music", "color": "#456bad", "background": "#e0edff" },
+  { "id": "smile", "icon": "smile", "color": "#397f89", "background": "#dbf3f4" }
+]
