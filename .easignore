@@ -1,0 +1,17 @@
+node_modules/
+.git/
+.expo/
+.preview/
+.data/
+dist/
+/build/
+presentation/
+.env
+.env.*
+credentials.json
+*.p12
+*.mobileprovision
+*.log
+.DS_Store
+Thumbs.db
+-

@@ -1,0 +1,22 @@
+{
+  "cli": {
+    "version": ">= 25.2.0",
+    "appVersionSource": "local"
+  },
+  "build": {
+    "ios-unsigned": {
+      "node": "24.14.0",
+      "distribution": "internal",
+      "env": {
+        "SAFEWALK_UNSIGNED_IOS": "1"
+      },
+      "ios": {
+        "image": "latest",
+        "withoutCredentials": true,
+        "buildConfiguration": "Release",
+        "config": "ios-unsigned.yml",
+        "applicationArchivePath": "build/ios/SafeWalk-unsigned.ipa"
+      }
+    }
+  }
+}

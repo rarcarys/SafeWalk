@@ -1,0 +1,22 @@
+build:
+  name: SafeWalk iPhone build without Apple signing
+  steps:
+    - eas/checkout
+    - eas/install_node_modules
+    - eas/resolve_build_config
+    - eas/prebuild
+    - run:
+        name: Install iOS dependencies
+        working_directory: ios
+        command: pod install
+    - run:
+        name: Build for a physical iPhone without signing
+        command: >-
+          xcodebuild -workspace ios/SafeWalk.xcworkspace -scheme SafeWalk
+          -configuration Release -sdk iphoneos -destination generic/platform=iOS
+          -derivedDataPath build/ios-derived
+          CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY= build
+    - run:
+        name: Package unsigned IPA
+        command: node scripts/package-ios-unsigned.cjs
+    - eas/find_and_upload_build_artifacts

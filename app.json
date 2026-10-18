@@ -4,9 +4,23 @@
     "slug": "safewalk",
     "version": "1.0.0",
     "orientation": "portrait",
-    "userInterfaceStyle": "light",
+    "userInterfaceStyle": "automatic",
+    "experiments": {
+      "inlineModules": {
+        "watchedDirectories": [
+          "src/native"
+        ]
+      }
+    },
     "ios": {
-      "supportsTablet": true
+      "supportsTablet": true,
+      "bundleIdentifier": "com.safewalk.local",
+      "infoPlist": {
+        "NSLocalNetworkUsageDescription": "Подключение к локальному серверу SafeWalk"
+      }
+    },
+    "android": {
+      "package": "com.safewalk.local"
     },
     "web": {
       "bundler": "metro",
@@ -14,15 +28,36 @@
       "shortName": "SafeWalk"
     },
     "plugins": [
+      [
+        "expo-splash-screen",
+        {
+          "backgroundColor": "#ffffff",
+          "dark": {
+            "backgroundColor": "#181c23"
+          }
+        }
+      ],
       "expo-font",
       "expo-secure-store",
+      "./plugins/with-personal-signing.cjs",
+      "expo-notifications",
       [
         "expo-location",
         {
-          "locationWhenInUsePermission": "SafeWalk использует геопозицию для точки отправления на карте."
+          "locationWhenInUsePermission": "SafeWalk использует геопозицию для маршрута и, по вашему выбору, передаёт её сопровождающим.",
+          "locationAlwaysAndWhenInUsePermission": "Разрешите обновление координат при заблокированном экране во время активной прогулки.",
+          "isIosBackgroundLocationEnabled": true,
+          "isAndroidBackgroundLocationEnabled": true,
+          "isAndroidForegroundServiceEnabled": true
         }
       ],
       "expo-status-bar"
-    ]
+    ],
+    "extra": {
+      "eas": {
+        "projectId": "fc01e914-6b40-46a8-9310-de04155bbca3"
+      }
+    },
+    "owner": "rarcarys"
   }
 }
