@@ -1,30 +1,31 @@
+import { useSettings } from '../../context/SettingsContext';
 import { View, Text, Switch } from 'react-native';
-import s from '../../styles/appStyles';
-import { colors } from '../../styles/theme';
 import React from 'react';
 export default function SettingRow({
   title,
   description,
   value,
   onValueChange,
+  disabled,
+  compact = false,
+  last
 }) {
-  return (
-    <View style={s.settingRow}>
+  const {
+    appStyles: s,
+    colors,
+    t
+  } = useSettings();
+  return <View style={[s.settingsToggleRow, compact && s.compactToggleRow, last && s.settingsLastRow]}>
       <View style={s.flex}>
-        <Text style={s.rowTitle}>{title}</Text>
-        {description && <Text style={s.rowSubtitle}>{description}</Text>}
+        <Text style={s.settingsRowTitle}>{title}</Text>
+        {description && <Text style={s.settingsOptionDescription}>{description}</Text>}
       </View>
-      <Switch
-        accessibilityLabel={title}
-        value={value}
-        onValueChange={onValueChange}
-        trackColor={{
-          false: '#d7d8dc',
-          true: colors.blue,
-        }}
-        thumbColor="#fff"
-        activeThumbColor="#fff"
-      />
-    </View>
-  );
+      <View style={s.settingsSwitchControl}>
+      <Switch accessibilityLabel={title} accessibilityHint={description} value={value} disabled={disabled} onValueChange={onValueChange} trackColor={{
+      false: colors.switchTrack,
+      true: colors.blue
+    }} thumbColor="#fff" activeThumbColor="#fff" />
+      {!compact && <Text style={[s.settingsSwitchState, value && s.settingsSwitchStateOn]}>{t(value ? 'Включено' : 'Выключено')}</Text>}
+      </View>
+    </View>;
 }

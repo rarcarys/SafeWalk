@@ -1,4 +1,4 @@
-export const colors = {
+const light = {
   ink: '#202124',
   muted: '#75787d',
   line: '#e8e8eb',
@@ -6,4 +6,58 @@ export const colors = {
   blue: '#3169e8',
   red: '#d43839',
   white: '#ffffff',
+  surface: '#ffffff',
+  inverse: '#ffffff',
+  sidebar: '#fafafa',
+  selected: '#eaf0fc',
+  selectedText: '#3169e8',
+  control: '#f2f2f4',
+  border: '#dfe1e5',
+  switchTrack: '#d7d8dc',
+  warningBackground: '#fff4e5',
+  warningText: '#875924',
+  errorBackground: '#fff4f4',
+  dangerBorder: '#efc8c8',
+  dangerFill: '#d43839',
+  success: '#32835d',
+  mapBackground: '#e7ece8',
+  mapOverlay: '#ffffffee',
+  mapLabel: '#62666a',
 };
+
+const dark = {
+  ...light,
+  ink: '#f1f3f7',
+  muted: '#aeb5c1',
+  line: '#383e49',
+  canvas: '#252a33',
+  blue: '#477de5',
+  red: '#f07579',
+  surface: '#181c23',
+  inverse: '#181c23',
+  sidebar: '#1e222b',
+  selected: '#263757',
+  selectedText: '#a6c3ff',
+  control: '#2b303b',
+  border: '#434b59',
+  switchTrack: '#4d5563',
+  warningBackground: '#3b3022',
+  warningText: '#f0c48e',
+  errorBackground: '#3b252b',
+  dangerBorder: '#6d3c46',
+  success: '#72c99c',
+  mapBackground: '#242d2b',
+  mapOverlay: '#181c23ee',
+  mapLabel: '#bdc5cf',
+};
+
+export const palettes = { light, dark };
+export const themeOptions = [
+  { value: 'light', label: 'Светлая', icon: 'sun' },
+  { value: 'dark', label: 'Тёмная', icon: 'moon' },
+];
+export const fontSizeOptions = [
+  { value: 'small', label: 'Маленький', scale: 0.9 },
+  { value: 'normal', label: 'Обычный', scale: 1 },
+  { value: 'large', label: 'Крупный', scale: 1.2 },
+];
