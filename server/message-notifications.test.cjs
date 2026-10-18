@@ -1,0 +1,36 @@
+const test = require('node:test');
+const assert = require('node:assert/strict');
+const { fixture } = require('./test-support.cjs');
+
+test('message notification feed is private and push opens the sender chat, skipping already read messages', async t => {
+  const pushes = [];
+  const { call, user, service } = await fixture(t, { notificationOptions: { enabled: true, fetcher: async (_url, options) => { pushes.push(JSON.parse(options.body)); return { ok: true, json: async () => ({ data: { status: 'ok', id: 'message-ticket' } }) }; } } });
+  const a = await user('notice-a'), b = await user('notice-b'), c = await user('notice-c');
+  await call('circle/contacts', a.token, { email: b.user.email });
+  await call(`circle/invitations/${a.user.id}/respond`, b.token, { decision: 'accepted' });
+  await call('notifications/devices', b.token, { token: 'ExpoPushToken[message_test_12345]' });
+  const initial = (await call('notifications/messages', b.token)).body;
+  assert.equal((await call('notifications/messages')).status, 401);
+  assert.deepEqual(initial.messages, []);
+  const message = (await call(`circle/chats/${b.user.id}/messages`, a.token, { text: 'Private message', clientId: 'notify_msg_1' })).body.message;
+  const feed = (await call(`notifications/messages?after=${initial.cursor}`, b.token)).body;
+  assert.equal(feed.messages[0].senderId, a.user.id);
+  assert.equal(feed.messages[0].text, 'Private message');
+  assert.equal((await call('notifications/messages?after=0', c.token)).body.messages.length, 0);
+  assert.equal((await call('notifications/messages?after=0', a.token)).body.messages.length, 0);
+  await service.processPushNotifications();
+  const push = pushes.find(item => item.data?.messageId === message.id);
+  assert.equal(push.data.peerId, a.user.id); assert.equal(push.data.page, 'chats');
+  assert.equal(push.body.includes('Private message'), false);
+  await call(`circle/chats/${a.user.id}/read`, b.token, { lastId: message.id }, 'PUT');
+  assert.equal((await call('notifications/messages?after=0', b.token)).body.messages.length, 0);
+  const next = (await call(`circle/chats/${b.user.id}/messages`, a.token, { text: 'Already seen', clientId: 'notify_msg_2' })).body.message;
+  await call(`circle/chats/${a.user.id}/read`, b.token, { lastId: next.id }, 'PUT');
+  await service.processPushNotifications();
+  assert.equal(pushes.some(item => item.data?.messageId === next.id), false);
+  await call(`circle/chats/${b.user.id}/messages`, a.token, { text: 'Blocked', clientId: 'notify_msg_3' });
+  await call(`circle/blocks/${a.user.id}`, b.token, {});
+  assert.equal((await call('notifications/messages?after=0', b.token)).body.messages.length, 0);
+  await service.processPushNotifications();
+  assert.equal(pushes.filter(item => item.data?.kind === 'message').length, 1);
+});
