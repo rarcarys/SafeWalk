@@ -1,7 +1,8 @@
+const { testDatabaseOptions, inspectDatabase, cleanupTestDatabase } = require('./test-database.cjs');
 const test = require('node:test');
 const assert = require('node:assert/strict');
 const { once } = require('node:events');
-const { DatabaseSync } = require('node:sqlite');
+
 const fs = require('node:fs');
 const path = require('node:path');
 const os = require('node:os');
@@ -9,7 +10,7 @@ const { createAuthService } = require('./auth.cjs');
 
 const password = 'SafeWalk-test-passphrase-2026';
 
-test('real accounts, sessions, browser cookies and request boundaries', async t => {
+test('real accounts, sessions, browser cookies and request boundaries', async (t) => {
   const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'safewalk-auth-test-'));
   const databasePath = path.join(directory, 'accounts.sqlite');
   let time = Date.now();
@@ -18,20 +19,20 @@ test('real accounts, sessions, browser cookies and request boundaries', async t 
   let base;
   const origin = 'http://localhost:8081';
   async function start() {
-    service = createAuthService({ databasePath, origins: [origin], loginLimit: 100, now: () => time });
+    service = await createAuthService({ ...testDatabaseOptions(databasePath), databasePath, origins: [origin], loginLimit: 100, now: () => time });
     server = service.app.listen(0, '127.0.0.1');
     await once(server, 'listening');
     base = `http://127.0.0.1:${server.address().port}`;
   }
   async function stop() {
-    await new Promise(resolve => server.close(resolve));
-    service.close();
+    await new Promise((resolve) => server.close(resolve));
+    await service.close();
   }
   async function call(endpoint, body, headers = {}) {
     const response = await fetch(`${base}/api/auth/${endpoint}`, {
       method: body === undefined ? 'GET' : 'POST',
       headers: { 'Content-Type': 'application/json', 'X-SafeWalk-Client': 'native', ...headers },
-      body: body === undefined ? undefined : JSON.stringify(body),
+      body: body === undefined ? undefined : JSON.stringify(body)
     });
     return { status: response.status, headers: response.headers, body: await response.json() };
   }
@@ -42,7 +43,7 @@ test('real accounts, sessions, browser cookies and request boundaries', async t 
       const file = `${databasePath}${suffix}`;
       if (fs.existsSync(file)) fs.unlinkSync(file);
     }
-    fs.rmdirSync(directory);
+    await cleanupTestDatabase(databasePath);fs.rmdirSync(directory);
   });
   let token;
   await t.test('unauthenticated and invented sessions are rejected', async () => {
@@ -71,13 +72,13 @@ test('real accounts, sessions, browser cookies and request boundaries', async t 
   });
   await t.test('credentials are salted hashes, not readable passwords', async () => {
     await call('register', { name: 'Дана', email: 'dana@example.com', password });
-    const inspection = new DatabaseSync(databasePath, { readOnly: true });
-    const rows = inspection.prepare('SELECT password_hash, password_salt FROM users ORDER BY email').all();
+    const inspection = await inspectDatabase(databasePath);
+    const rows = await inspection.prepare('SELECT password_hash, password_salt FROM users ORDER BY email').all();
     assert.equal(rows.length, 2);
     assert.notEqual(rows[0].password_hash, password);
     assert.notEqual(rows[0].password_hash, rows[1].password_hash);
     assert.notEqual(rows[0].password_salt, rows[1].password_salt);
-    inspection.close();
+    await inspection.close();
   });
   await t.test('browser uses an HttpOnly cookie without a JSON token', async () => {
     const login = await call('login', { email: 'renata@example.com', password }, { Origin: origin, 'X-SafeWalk-Client': 'web' });
@@ -119,7 +120,7 @@ test('real accounts, sessions, browser cookies and request boundaries', async t 
 test('repeated sign-in attempts are rate limited', async () => {
   const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'safewalk-rate-test-'));
   const databasePath = path.join(directory, 'accounts.sqlite');
-  const service = createAuthService({ databasePath, loginLimit: 1 });
+  const service = await createAuthService({ ...testDatabaseOptions(databasePath), databasePath, loginLimit: 1 });
   const server = service.app.listen(0, '127.0.0.1');
   await once(server, 'listening');
   try {
@@ -128,9 +129,9 @@ test('repeated sign-in attempts are rate limited', async () => {
     assert.equal((await fetch(address, options)).status, 400);
     assert.equal((await fetch(address, options)).status, 429);
   } finally {
-    await new Promise(resolve => server.close(resolve));
-    service.close();
+    await new Promise((resolve) => server.close(resolve));
+    await service.close();
     for (const suffix of ['', '-wal', '-shm']) if (fs.existsSync(`${databasePath}${suffix}`)) fs.unlinkSync(`${databasePath}${suffix}`);
-    fs.rmdirSync(directory);
+    await cleanupTestDatabase(databasePath);fs.rmdirSync(directory);
   }
 });

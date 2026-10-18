@@ -1,9 +1,11 @@
 import { Platform } from 'react-native';
 import Constants from 'expo-constants';
 import { getSessionToken } from './session';
-function apiBase() {
+import { sessionExpired } from './authEvents';
+export function apiBase() {
   if (process.env.EXPO_PUBLIC_AUTH_API_URL)
     return process.env.EXPO_PUBLIC_AUTH_API_URL.replace(/\/$/, '');
+  if (Platform.OS === 'web' && window.location.protocol === 'https:') return window.location.origin;
   const host =
     Platform.OS === 'web'
       ? window.location.hostname
@@ -11,10 +13,14 @@ function apiBase() {
           .hostname;
   return `http://${host}:3001`;
 }
-export async function request(endpoint, { method = 'GET', body } = {}) {
+export async function request(endpoint, { method = 'GET', body, timeout = 10000, signal, expectedOwner } = {}) {
   const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), 10000);
+  const abort = () => controller.abort();
+  signal?.addEventListener('abort', abort);
+  if (signal?.aborted) controller.abort();
+  const timer = setTimeout(abort, timeout);
   let response;
+  let result;
   try {
     response = await fetch(`${apiBase()}/api/auth/${endpoint}`, {
       method,
@@ -22,6 +28,7 @@ export async function request(endpoint, { method = 'GET', body } = {}) {
       headers: {
         'Content-Type': 'application/json',
         'X-SafeWalk-Client': Platform.OS === 'web' ? 'web' : 'native',
+        ...(expectedOwner ? { 'X-SafeWalk-Owner': expectedOwner } : {}),
         ...(getSessionToken() && Platform.OS !== 'web'
           ? {
               Authorization: `Bearer ${getSessionToken()}`,
@@ -31,13 +38,17 @@ export async function request(endpoint, { method = 'GET', body } = {}) {
       body: body === undefined ? undefined : JSON.stringify(body),
       signal: controller.signal,
     });
+    result = await response.json();
   } catch {
-    throw new Error('Не удалось подключиться к серверу. Попробуйте ещё раз.');
+    const error = new Error('Не удалось подключиться к серверу. Проверьте подключение и повторите попытку.');
+    error.code = 'NETWORK';
+    throw error;
   } finally {
     clearTimeout(timer);
+    signal?.removeEventListener('abort', abort);
   }
-  const result = await response.json();
   if (!response.ok) {
+    if (response.status === 401 && !['login', 'register'].includes(endpoint)) sessionExpired();
     const error = new Error(result.message || 'Не удалось выполнить запрос');
     error.status = response.status;
     error.fields = result.fields;
