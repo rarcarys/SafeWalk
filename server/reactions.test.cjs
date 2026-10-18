@@ -1,0 +1,31 @@
+const test = require('node:test');
+const assert = require('node:assert/strict');
+const { fixture } = require('./test-support.cjs');
+const { inspectDatabase } = require('./test-database.cjs');
+
+test('message reactions validate membership, replace idempotently, sync old messages and persist in database', async t => {
+  const { call, user, databasePath } = await fixture(t);
+  const a = await user('react-a'), b = await user('react-b'), c = await user('react-c');
+  await call('circle/contacts', a.token, { email: b.user.email });
+  await call(`circle/invitations/${a.user.id}/respond`, b.token, { decision: 'accepted' });
+  const sent = await call(`circle/chats/${b.user.id}/messages`, a.token, { text: 'Привет', clientId: 'reaction-message-1' });
+  const id = sent.body.message.id;
+  const endpoint = `circle/chats/${b.user.id}/messages/${id}/reaction`;
+  assert.equal((await call(endpoint, null, { emoji: '👍' }, 'PUT')).status, 401);
+  assert.equal((await call(endpoint, c.token, { emoji: '👍' }, 'PUT')).status, 403);
+  assert.equal((await call(endpoint, a.token, { emoji: 'invalid' }, 'PUT')).status, 400);
+  for (let n = 0; n < 2; n++) assert.equal((await call(endpoint, a.token, { emoji: '👍' }, 'PUT')).body.reactions.length, 1);
+  await call(endpoint, a.token, { emoji: '❤️' }, 'PUT');
+  await call(`circle/chats/${a.user.id}/messages/${id}/reaction`, b.token, { emoji: '❤️' }, 'PUT');
+  const state = await call(`circle/chats/${a.user.id}/messages?after=${id}&reactionFrom=${id}`, b.token);
+  assert.equal(state.body.messages.length, 0);
+  assert.equal(state.body.reactions.length, 2);
+  assert.ok(state.body.reactions.every(item => item.emoji === '❤️'));
+  const db = await inspectDatabase(databasePath);
+  assert.equal((await db.prepare('SELECT COUNT(*) AS n FROM message_reactions').get()).n, 2);
+  await db.close();
+  await call(endpoint, a.token, { emoji: null }, 'PUT');
+  assert.equal((await call(`circle/chats/${b.user.id}/messages`, a.token)).body.reactions.length, 1);
+  await call(`circle/blocks/${a.user.id}`, b.token, {});
+  assert.equal((await call(endpoint, a.token, { emoji: '👍' }, 'PUT')).status, 403);
+});
