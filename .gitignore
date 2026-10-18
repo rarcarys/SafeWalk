@@ -1,6 +1,7 @@
 node_modules/
 .expo/
 dist/
+/build/
 .preview/
 .data/
 .env*
@@ -9,3 +10,4 @@ presentation/
 *.log
 .DS_Store
 Thumbs.db
+/-

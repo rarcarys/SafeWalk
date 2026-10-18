@@ -3,6 +3,7 @@ const path = require('node:path');
 const http = require('node:http');
 const net = require('node:net');
 const { spawn } = require('node:child_process');
+const { ensureLocalPostgres } = require('./postgres-local.cjs');
 
 const root = path.resolve(__dirname, '..');
 const directory = path.join(root, '.preview');
@@ -14,7 +15,10 @@ function healthy() {
       let body = '';
       response.on('data', chunk => { body += chunk; });
       response.on('end', () => {
-        try { resolve(JSON.parse(body).service === 'safewalk-auth'); }
+        try {
+          const result = JSON.parse(body);
+          resolve(response.statusCode === 200 && result.service === 'safewalk-auth' && result.status === 'ok' && (!process.env.DATABASE_URL || result.database === 'postgres'));
+        }
         catch { resolve(false); }
       });
     });
@@ -32,12 +36,15 @@ function free() {
 }
 
 async function startAuthServer() {
+  const envFile = path.join(root, '.env');
+  if (fs.existsSync(envFile)) process.loadEnvFile(envFile);
+  await ensureLocalPostgres(process.env.DATABASE_URL);
   fs.mkdirSync(directory, { recursive: true });
   const stateFile = path.join(directory, 'auth-server.json');
   if (await healthy()) {
-    return fs.existsSync(stateFile) ? JSON.parse(fs.readFileSync(stateFile, 'utf8')) : { port, reused: true };
+    return { port, reused: true };
   }
-  if (!(await free())) throw new Error(`Port ${port} is occupied by another service.`);
+  if (!(await free())) throw new Error(`Порт ${port} занят другим сервисом. Освободите его и повторите запуск.`);
   const logFile = path.join(directory, 'auth.log');
   const stdout = fs.openSync(logFile, 'a');
   const child = spawn(process.execPath, [path.join(root, 'server', 'auth.cjs')], {
@@ -45,14 +52,19 @@ async function startAuthServer() {
     detached: true, windowsHide: true, stdio: ['ignore', stdout, stdout],
   });
   child.unref();
+  let startupError;
+  child.on('error', error => { startupError = error; });
   fs.closeSync(stdout);
   const state = { pid: child.pid, port, logFile };
   fs.writeFileSync(stateFile, JSON.stringify(state, null, 2));
   for (let attempt = 0; attempt < 40; attempt++) {
+    if (startupError) throw startupError;
     if (await healthy()) return state;
     await new Promise(resolve => setTimeout(resolve, 250));
   }
-  throw new Error(`Auth server did not start. Check ${logFile}`);
+  child.kill();
+  fs.rmSync(stateFile, { force: true });
+  throw new Error(`Сервер SafeWalk не запустился. Подробности: ${logFile}`);
 }
 
 if (require.main === module) startAuthServer().then(state => console.log(JSON.stringify(state, null, 2)))
