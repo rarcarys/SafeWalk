@@ -1,18 +1,11 @@
+import { useSettings } from '../context/SettingsContext';
 import React, { useState } from 'react';
 import ModalSheet from './ui/ModalSheet';
-import {
-  ActivityIndicator,
-  ScrollView,
-  Text,
-  Pressable,
-  View,
-} from 'react-native';
-import { colors } from '../styles/theme';
-import s from '../styles/appStyles';
+import { ActivityIndicator, ScrollView, Text, Pressable, View } from 'react-native';
 import Icon from './ui/Icon';
 import ActionButton from './ui/ActionButton';
-import Avatar from './ui/Avatar';
-import { people } from '../data/contacts';
+import ContactDialogs from './ContactDialogs';
+import TripDialogs from './TripDialogs';
 export default function JourneyDialogs({
   dialogs,
   planning,
@@ -20,229 +13,109 @@ export default function JourneyDialogs({
   contacts,
   notifications,
   onSignOut,
+  onOpenChat,
+  account,
+  sharedJourney,
+  onOpenMap
 }) {
-  const { dialog, setDialog, searchVersion } = dialogs;
+  const {
+    appStyles: s,
+    colors,
+    t
+  } = useSettings();
+  const {
+    dialog,
+    setDialog,
+    searchVersion
+  } = dialogs;
   const {
     searchBusy,
     setSearchBusy,
     mapError,
     searchResults,
     selectTarget,
-    buildRoute,
+    buildRoute
   } = planning;
-  const { routeState } = trip;
-  const { contact, setContact, inspectedContact } = contacts;
-  const { notify } = notifications;
+  const {
+    routeState
+  } = trip;
+  const {
+    notify
+  } = notifications;
   const [logoutBusy, setLogoutBusy] = useState(false);
-  return (
-    <>
-      {' '}
-      <ModalSheet
-        visible={dialog === 'search'}
-        title="Найденные места"
-        onClose={() => {
-          searchVersion.current++;
-          setSearchBusy(false);
-          setDialog(null);
-        }}
-      >
-        {searchBusy ? (
-          <ActivityIndicator
-            color={colors.blue}
-            style={{
-              marginVertical: 24,
-            }}
-          />
-        ) : (
-          <ScrollView
-            style={{
-              maxHeight: 310,
-            }}
-            keyboardShouldPersistTaps="handled"
-          >
-            {!!mapError && (
-              <Text accessibilityRole="alert" style={s.mapError}>
+  return <>
+      <ModalSheet visible={dialog === 'search'} title={t("Найденные места")} onClose={() => {
+      searchVersion.current++;
+      setSearchBusy(false);
+      setDialog(null);
+    }}>
+
+        {searchBusy ? <ActivityIndicator color={colors.blue} style={{
+        marginVertical: 24
+      }} /> : <ScrollView style={{
+        maxHeight: 310
+      }} keyboardShouldPersistTaps="handled">
+
+            {!!mapError && <Text accessibilityRole="alert" style={s.mapError}>
                 {mapError}
-              </Text>
-            )}
-            {searchResults?.length === 0 && (
-              <Text style={s.modalDescription}>
-                Ничего не найдено. Уточните адрес и город.
-              </Text>
-            )}
-            {searchResults?.map((point, index) => (
-              <Pressable
-                key={index}
-                accessibilityRole="button"
-                accessibilityLabel={`Выбрать ${point.name}`}
-                onPress={() => selectTarget(point)}
-                style={s.searchResult}
-              >
+              </Text>}
+            {searchResults?.length === 0 && <Text style={s.modalDescription}>{t('Адрес не найден. Проверьте город, название улицы и номер дома. Если дома нет в данных карты, выберите точку вручную.')}
+
+          </Text>}
+            {searchResults?.map((point, index) => <Pressable key={index} accessibilityRole="button" accessibilityLabel={t("Выбрать {value0}", {
+          value0: point.name
+        })} onPress={() => selectTarget(point, planning.collapsed)} style={s.searchResult}>
+
                 <Icon name="map-pin" size={18} color={colors.blue} />
                 <Text style={[s.rowTitle, s.flex]}>{point.name}</Text>
                 <Icon name="chevron-right" size={16} />
-              </Pressable>
-            ))}
-          </ScrollView>
-        )}
-        <Text style={s.modalFootnote}>
-          Поиск: OpenStreetMap. Введённый адрес передаётся сервису Nominatim.
+              </Pressable>)}
+          </ScrollView>}
+        <Text style={s.modalFootnote}>{t("Поиск: OpenStreetMap. Введённый адрес передаётся сервису Nominatim.")}
+
         </Text>
       </ModalSheet>
-      <ModalSheet
-        visible={dialog === 'routeConsent'}
-        title="Построить маршрут?"
-        onClose={() => setDialog(null)}
-      >
-        <Text style={s.modalDescription}>
-          Координаты точек А и Б будут переданы сервису маршрутов FOSSGIS.
-          Близким ваша геопозиция не отправляется.
+      <ModalSheet visible={dialog === 'routeConsent'} title={t("Построить маршрут?")} onClose={() => setDialog(null)}>
+
+        <Text style={s.modalDescription}>{t("Координаты точек А и Б будут переданы сервису маршрутов FOSSGIS. Передача координат контактам настраивается отдельно перед поездкой.")}
+
+
         </Text>
-        <View
-          style={{
-            marginTop: 22,
-          }}
-        >
-          <ActionButton
-            title="Разрешить и построить"
-            icon="navigation"
-            onPress={buildRoute}
-          />
+        <View style={{
+        marginTop: 22
+      }}>
+
+          <ActionButton title={t("Разрешить и построить")} icon="navigation" onPress={buildRoute} />
+
         </View>
-        <ActionButton
-          title="Отмена"
-          secondary
-          onPress={() => setDialog(null)}
-        />
+
       </ModalSheet>
-      <ModalSheet
-        visible={dialog === 'logout'}
-        title="Выйти из аккаунта?"
-        onClose={() => setDialog(null)}
-      >
+      <ModalSheet visible={dialog === 'logout'} title={t("Выйти из аккаунта?")} onClose={() => setDialog(null)}>
+
         <Text style={s.modalDescription}>
-          {routeState === 'active'
-            ? 'Текущее сопровождение будет завершено.'
-            : 'Вы сможете войти снова в любое время.'}
+          {routeState === 'active' ? t("Поездка сохранится в аккаунте. Сценарий связи продолжит работать на сервере. Чтобы остановить его, сначала отмените поездку.") : t("Вы сможете войти снова в любое время.")}
         </Text>
-        <View
-          style={{
-            marginTop: 22,
-          }}
-        >
-          <ActionButton
-            title="Выйти"
-            busy={logoutBusy}
-            onPress={async () => {
-              setLogoutBusy(true);
-              try {
-                await onSignOut();
-              } catch (error) {
-                setDialog(null);
-                notify(error.message);
-              } finally {
-                setLogoutBusy(false);
-              }
-            }}
-          />
-        </View>
-        <ActionButton
-          title="Отмена"
-          secondary
-          onPress={() => setDialog(null)}
-        />
-      </ModalSheet>
-      <ModalSheet
-        visible={dialog === 'sos'}
-        title="Отправить SOS?"
-        onClose={() => setDialog(null)}
-      >
-        <Text style={s.modalDescription}>
-          Попросите Дану и маму связаться с вами.
-        </Text>
-        <View style={s.sosRecipients}>
-          <Avatar person="dana" small />
-          <Avatar person="mom" small />
-          <Text style={s.rowSubtitle}>2 контакта</Text>
-        </View>
-        <ActionButton
-          title="Отправить SOS"
-          danger
-          onPress={() => {
+        <View style={{
+        marginTop: 22
+      }}>
+
+          <ActionButton title={t("Выйти")} busy={logoutBusy} onPress={async () => {
+          setLogoutBusy(true);
+          try {
+            await onSignOut();
+          } catch (error) {
             setDialog(null);
-            notify(
-              'Не удалось отправить сообщения. Свяжитесь с близкими напрямую.',
-            );
-          }}
-        />
-        <ActionButton
-          title="Отмена"
-          secondary
-          onPress={() => setDialog(null)}
-        />
-      </ModalSheet>
-      <ModalSheet
-        visible={dialog === 'contact'}
-        title="Кто будет на связи"
-        onClose={() => setDialog(null)}
-      >
-        {['dana', 'mom'].map((id) => (
-          <Pressable
-            key={id}
-            accessibilityRole="radio"
-            accessibilityLabel={people[id].name}
-            accessibilityState={{
-              checked: contact === id,
-            }}
-            onPress={() => {
-              setContact(id);
-              setDialog(null);
-            }}
-            style={s.personRow}
-          >
-            <Avatar person={id} />
-            <View style={s.flex}>
-              <Text style={s.personName}>{people[id].name}</Text>
-              <Text style={s.rowSubtitle}>{people[id].relation}</Text>
-            </View>
-            <View style={[s.radio, contact === id && s.radioSelected]}>
-              {contact === id && <View style={s.radioDot} />}
-            </View>
-          </Pressable>
-        ))}
-      </ModalSheet>
-      <ModalSheet
-        visible={dialog === 'person'}
-        title={people[inspectedContact].name}
-        onClose={() => setDialog(null)}
-      >
-        <Text style={s.modalDescription}>
-          {people[inspectedContact].relation} ·{' '}
-          {inspectedContact === contact ? 'основной' : 'резервный'} контакт
-          сопровождения
-        </Text>
-        <View
-          style={{
-            marginTop: 20,
-          }}
-        >
-          <ActionButton
-            title={
-              inspectedContact === contact
-                ? 'Выбрать другой контакт'
-                : 'Сделать основным'
-            }
-            secondary
-            onPress={() => {
-              if (inspectedContact === contact) setDialog('contact');
-              else {
-                setContact(inspectedContact);
-                setDialog(null);
-              }
-            }}
-          />
+            notify(error.message);
+          } finally {
+            setLogoutBusy(false);
+          }
+        }} />
+
         </View>
+        <ActionButton title={t("Отмена")} secondary onPress={() => setDialog(null)} />
+
       </ModalSheet>
-    </>
-  );
+      <TripDialogs dialogs={dialogs} planning={planning} trip={trip} account={account} contacts={contacts} notify={notify} sharedJourney={sharedJourney} onOpenChat={onOpenChat} onOpenMap={onOpenMap} />
+      <ContactDialogs dialogs={dialogs} contacts={contacts} onOpenChat={onOpenChat} />
+    </>;
 }

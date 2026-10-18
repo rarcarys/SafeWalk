@@ -6,17 +6,22 @@ export const tabs = [
   },
   {
     id: 'route',
-    label: 'Маршрут',
+    label: 'Маршруты',
     icon: 'navigation',
   },
   {
     id: 'contacts',
-    label: 'Близкие',
+    label: 'Контакты',
     icon: 'users',
   },
   {
+    id: 'chats',
+    label: 'Чаты',
+    icon: 'message-circle',
+  },
+  {
     id: 'settings',
-    label: 'Профиль',
-    icon: 'user',
+    label: 'Настройки',
+    icon: 'settings',
   },
 ];
