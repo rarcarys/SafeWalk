@@ -28,3 +28,8 @@ export async function getCurrentLocation() {
     clearTimeout(timer);
   }
 }
+export async function watchLocation(onPosition, onError) {
+  const permission = await Location.requestForegroundPermissionsAsync();
+  if (permission.status !== 'granted') throw new Error('Доступ к геопозиции отключён. Маршрут сохранён, но положение не обновляется.');
+  return Location.watchPositionAsync({ accuracy: Location.Accuracy.Balanced, timeInterval: 10000, distanceInterval: 15 }, onPosition, onError);
+}
