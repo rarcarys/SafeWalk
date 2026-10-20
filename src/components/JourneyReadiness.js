@@ -2,7 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { Text, View, Pressable } from 'react-native';
 import Icon from './ui/Icon';
 import { useSettings } from '../context/SettingsContext';
-import { checkDeviceState, readBattery } from '../services/readiness';
+import { checkDeviceState } from '../services/readiness';
 import { loadJourneyState } from '../services/journeys';
 import ActionButton from './ui/ActionButton';
 
@@ -13,8 +13,8 @@ export default function JourneyReadiness({ accompanied, selected, compact = fals
   const [checking, setChecking] = useState(false);
   const check = async () => {
     setChecking(true);
-    const [device, network, battery] = await Promise.allSettled([checkDeviceState(), loadJourneyState(), readBattery()]);
-    setState({ ...(device.status === 'fulfilled' ? device.value : {}), online: network.status === 'fulfilled', battery: battery.status === 'fulfilled' ? battery.value : null });
+    const [device, network] = await Promise.allSettled([checkDeviceState(), loadJourneyState()]);
+    setState({ ...(device.status === 'fulfilled' ? device.value : {}), online: network.status === 'fulfilled' });
     setChecking(false);
   };
   useEffect(() => { check(); }, []);
@@ -29,9 +29,8 @@ export default function JourneyReadiness({ accompanied, selected, compact = fals
       <Text style={s.rowSubtitle}>{t('Связь с сервером')}: {t(state.online ? 'доступна' : 'нет связи')}</Text>
       <Text style={s.rowSubtitle}>{t('Геолокация')}: {permission(state.location)}</Text>
       <Text style={s.rowSubtitle}>{t('Уведомления')}: {permission(state.notifications)}</Text>
-      <Text style={s.rowSubtitle}>{t('Заряд')}: {state.battery ? `${state.battery.level}%` : t('недоступно на устройстве')}</Text>
       <Text style={s.rowSubtitle}>{t('Контакты')}: {accompanied ? selected.map(person => `${person.name} — ${t(person.connectionStatus === 'accepted' ? 'связь подтверждена' : 'ожидает ответа')}`).join(', ') : t('Без сопровождения')}</Text>
-      {accompanied && <Text style={s.rowSubtitle}>{t('Согласие на эту поездку будет запрошено после нажатия «Начать».')}</Text>}
+      {accompanied && <Text style={s.rowSubtitle}>{t('Поездка начнётся сразу. Доверенные контакты получат уведомление и смогут открыть маршрут.')}</Text>}
       {(!state.online || state.location !== 'granted' || state.notifications !== 'granted') && <Text style={s.mapError}>{t('Проверьте связь и разрешения. Без них передача координат и уведомления могут быть недоступны.')}</Text>}
     </>}
     {expanded && <ActionButton title={t('Проверить готовность')} secondary busy={checking} onPress={check} />}

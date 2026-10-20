@@ -2,6 +2,15 @@ import { createScaledStyles } from './scaleStyles';
 
 export function createAppStyles(colors, fontScale) {
   return createScaledStyles({
+  contactBatteryBadge: { flexDirection: 'row', alignItems: 'center', gap: 5, paddingVertical: 4, paddingHorizontal: 7, borderRadius: 8, backgroundColor: colors.canvas },
+  contactBatteryOutline: { width: 21, height: 11, borderWidth: 1, borderRadius: 3, padding: 1, justifyContent: 'center', marginRight: 2 },
+  contactBatteryFill: { height: 7, borderRadius: 1 },
+  contactBatteryTip: { position: 'absolute', right: -3, top: 3, width: 2, height: 3, borderRadius: 1 },
+  contactBatteryText: { fontSize: 11, lineHeight: 16, fontWeight: '600' },
+  tripContactStatus: { paddingHorizontal: 20, paddingVertical: 8, gap: 6, borderBottomWidth: 1, borderBottomColor: colors.line },
+  tripContactChips: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
+  tripContactChip: { flexDirection: 'row', alignItems: 'center', gap: 8, maxWidth: '100%', paddingVertical: 4, paddingLeft: 10, paddingRight: 5, borderWidth: 1, borderColor: colors.line, borderRadius: 12 },
+  tripContactName: { fontSize: 12, lineHeight: 18, color: colors.ink, flexShrink: 1 },
   linkInviteIntro: { paddingTop: 8, paddingBottom: 22, gap: 10 },
   linkInviteHeroIcon: { width: 60, height: 60, borderRadius: 22, backgroundColor: colors.selected, alignSelf: 'center', alignItems: 'center', justifyContent: 'center', marginBottom: 6 },
   linkInviteTitle: { fontSize: 23, lineHeight: 30, fontWeight: '600', color: colors.ink, textAlign: 'center' },

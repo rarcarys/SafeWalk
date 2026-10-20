@@ -413,7 +413,7 @@ export default function useJourney(ownerId) {
       setTarget(null);
       setDestination('');
       go('home');
-    } else act('arrive');
+    } else if (active && !account.busy) setDialog('confirmArrival');
   };
   const setPreference = (key, value) => account.setPreference(key, value).catch(failure => notify(failure.message));
   const savePlace = async slot => {
@@ -529,6 +529,7 @@ export default function useJourney(ownerId) {
       }) : formatDuration(duration, t),
       remainingMinutes: active ? Math.ceil((active.expectedAt - clock) / 60000) : null,
       onArrive,
+      onConfirmArrival: () => act('arrive'),
       onAddTime: () => act('extend'),
       onCancel: () => act('cancel'),
       active,

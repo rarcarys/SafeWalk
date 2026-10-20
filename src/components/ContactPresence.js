@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { View, Text } from 'react-native';
 import { useSettings } from '../context/SettingsContext';
-import Icon from './ui/Icon';
+import ContactBattery from './ContactBattery';
 
 export default function ContactPresence({ presence, detailed = false }) {
   const { appStyles: s, colors, t, locale } = useSettings();
@@ -20,10 +20,7 @@ export default function ContactPresence({ presence, detailed = false }) {
     <View style={s.contactPresenceLine}>
       <View style={[s.presenceDot, { backgroundColor: online ? colors.success : colors.muted }]} />
       <Text style={[s.presenceText, online && { color: colors.success }]}>{status}</Text>
-      {!!battery && <View style={s.presenceBattery} accessible accessibilityLabel={t(battery.charging ? 'Заряд: {count}%, заряжается' : 'Заряд: {count}%', { count: battery.level })}>
-        <Icon name={battery.charging ? 'battery-charging' : 'battery'} size={14} color={battery.level <= 20 && !battery.charging ? colors.red : colors.muted} />
-        <Text style={[s.presenceText, battery.level <= 20 && !battery.charging && { color: colors.red }]}>{battery.level}%</Text>
-      </View>}
+      <ContactBattery battery={battery} now={now} />
     </View>
     {detailed && <Text style={s.presenceText}>{battery ? t('Заряд обновлён в {time}', { time: new Date(battery.updatedAt).toLocaleTimeString(locale, { hour: '2-digit', minute: '2-digit' }) }) : t('Заряд недоступен или давно не обновлялся')}</Text>}
   </View>;

@@ -66,6 +66,9 @@ async function createJourneyService(database, now = Date.now) {
     slot TEXT NOT NULL, plan TEXT NOT NULL, PRIMARY KEY(owner_id, slot)
   )`);
   await database.exec("DROP INDEX IF EXISTS journey_active; CREATE UNIQUE INDEX journey_active ON journeys(owner_id) WHERE status IN ('active', 'pending')");
+  for (const row of await database.prepare("SELECT id, details FROM journeys WHERE status = 'pending'").all()) {
+    await database.prepare("UPDATE journeys SET status = 'active', started_at = ?, expected_at = ? WHERE id = ?").run(now(), now() + JSON.parse(row.details).minutes * 60000, row.id);
+  }
   const router = express.Router();
   const transaction = async (operation) => await database.transaction(operation);
   const keyValid = (key) => typeof key === 'string' && /^[a-zA-Z0-9_-]{8,100}$/.test(key);
@@ -87,7 +90,7 @@ async function createJourneyService(database, now = Date.now) {
   async function serialize(row, shared = false) {
     if (!row) return null;
     const details = JSON.parse(row.details);
-    const shareCoordinates = !shared || !!row.sharing && row.consent === 'accepted';
+    const shareCoordinates = !shared || !!row.sharing;
     return {
       id: row.id, ownerId: row.owner_id, ownerName: row.owner_name,
       status: row.status, startedAt: row.started_at, expectedAt: row.expected_at,
@@ -115,7 +118,7 @@ async function createJourneyService(database, now = Date.now) {
         const primaryAnswered = (await recipients(row.id)).some((person) => person.role === 'primary' && person.acknowledgedAt !== null);
         for (const recipient of await recipients(row.id)) {
           const due = row.expected_at + (prefs.delayMinutes + (recipient.role === 'backup' ? prefs.escalationMinutes : 0)) * 60000;
-          if (recipient.consent !== 'accepted' || recipient.notified || recipient.acknowledgedAt !== null || now() < due || recipient.role === 'backup' && primaryAnswered) continue;
+          if (recipient.notified || recipient.acknowledgedAt !== null || now() < due || recipient.role === 'backup' && primaryAnswered) continue;
           await message(row.owner_id, recipient.peerId, `journey_${row.id}_delay_${recipient.peerId}`, `${row.owner_name} ещё не подтвердил(а) прибытие в «${JSON.parse(row.details).target.name}». Пожалуйста, свяжитесь со мной. Поездка доступна во вкладке «Маршруты».`);
           await database.prepare('UPDATE journey_recipients SET notified = 1 WHERE journey_id = ? AND peer_id = ?').run(row.id, recipient.peerId);
         }
@@ -206,7 +209,7 @@ async function createJourneyService(database, now = Date.now) {
     await transaction(async () => {
       const inserted = await database.prepare('INSERT OR IGNORE INTO safety_events VALUES (?, ?, ?)').run(request.user.id, row.id, 'low_battery');
       if (inserted.changes) for (const person of await recipients(row.id)) {
-        if (person.consent === 'accepted' && (await accepted(database, row.owner_id, person.peerId))) await message(row.owner_id, person.peerId, `journey_${row.id}_battery_${person.peerId}`, `${request.user.name}: заряд телефона ${level}%. Во время поездки телефон может отключиться.`);
+        if (await accepted(database, row.owner_id, person.peerId)) await message(row.owner_id, person.peerId, `journey_${row.id}_battery_${person.peerId}`, `${request.user.name}: заряд телефона ${level}%. Во время поездки телефон может отключиться.`);
       }
     });
     response.json({ ok: true });
@@ -227,9 +230,8 @@ async function createJourneyService(database, now = Date.now) {
     const details = { origin: cleanPoint(body.origin), target: cleanPoint(body.target), transport: body.transport, minutes: body.minutes, route: { distance: body.route.distance, duration: body.route.duration, coordinates: body.route.coordinates.map((point) => ({ latitude: point.latitude, longitude: point.longitude })) } };
     await transaction(async () => {
       await database.prepare('INSERT INTO journeys (id, owner_id, client_id, details, started_at, expected_at, sharing, scenario) VALUES (?, ?, ?, ?, ?, ?, ?, ?)').run(id, request.user.id, body.clientId, JSON.stringify(details), now(), now() + body.minutes * 60000, +(body.accompanied && prefs.sharing), +(body.accompanied && prefs.scenario));
-      if (body.accompanied) await database.prepare("UPDATE journeys SET status = 'pending' WHERE id = ?").run(id);
       for (const person of selected) await database.prepare('INSERT INTO journey_recipients (journey_id, peer_id, role) VALUES (?, ?, ?)').run(id, person.peer_id, person.id === selection.primary_id ? 'primary' : 'backup');
-      await notifyAll(await database.prepare('SELECT * FROM journeys WHERE id = ?').get(id), 'start', `${request.user.name} приглашает сопровождать маршрут в «${details.target.name}». Время в пути: ${body.minutes} мин. Примите приглашение во вкладке «Маршруты».`);
+      await notifyAll(await database.prepare('SELECT * FROM journeys WHERE id = ?').get(id), 'start', `${request.user.name} начал(а) поездку в «${details.target.name}». Время в пути: ${body.minutes} мин. Маршрут доступен во вкладке «Маршруты». Нажмите «Слежу за поездкой», если вы на связи.`);
     });
     response.status(201).json({ journey: await serialize(await database.prepare('SELECT * FROM journeys WHERE id = ?').get(id)) });
   }));
@@ -277,7 +279,7 @@ async function createJourneyService(database, now = Date.now) {
   }));
   router.post('/:id/acknowledge', database.handle(async (request, response) => {
     const recipient = await database.prepare("SELECT r.* FROM journey_recipients r JOIN journeys j ON j.id = r.journey_id WHERE r.journey_id = ? AND r.peer_id = ? AND j.status = 'active'").get(request.params.id, request.user.id);
-    if (!recipient || recipient.consent !== 'accepted') return response.status(404).json({ message: 'Поездка не найдена или сопровождение не принято' });
+    if (!recipient) return response.status(404).json({ message: 'Поездка не найдена или сопровождение не принято' });
     await transaction(async () => {
       const row = await database.prepare('SELECT * FROM journeys WHERE id = ?').get(request.params.id);
       await database.prepare('UPDATE journey_recipients SET acknowledged_at = COALESCE(acknowledged_at, ?) WHERE journey_id = ? AND peer_id = ?').run(now(), row.id, request.user.id);
@@ -292,13 +294,10 @@ async function createJourneyService(database, now = Date.now) {
     if (!row) return response.status(404).json({ message: 'Приглашение не найдено' });
     if (!(await accepted(database, row.owner_id, request.user.id))) return response.status(403).json({ message: 'Доступ закрыт' });
     if (row.consent === decision) return response.json({ ok: true });
-    if (row.consent !== 'pending') return response.status(409).json({ message: 'Ответ уже сохранён. Для отзыва доступа удалите контакт или заблокируйте пользователя.' });
     await transaction(async () => {
       await database.prepare('UPDATE journey_recipients SET consent = ? WHERE journey_id = ? AND peer_id = ?').run(decision, row.id, request.user.id);
-      if (row.role === 'primary' && decision === 'accepted' && row.status === 'pending') {
-        await database.prepare("UPDATE journeys SET status = 'active', started_at = ?, expected_at = ? WHERE id = ?").run(now(), now() + JSON.parse(row.details).minutes * 60000, row.id);
-      }
-      await message(request.user.id, row.owner_id, `journey_${row.id}_consent_${request.user.id}`, `${request.user.name}: ${decision === 'accepted' ? 'сопровождение принято' : 'сопровождение отклонено'}.`);
+
+      await message(request.user.id, row.owner_id, `journey_${row.id}_consent_${request.user.id}_${decision}`, `${request.user.name}: ${decision === 'accepted' ? 'слежу за поездкой' : 'сейчас не могу следить за поездкой'}.`);
     });
     response.json({ ok: true });
   }));

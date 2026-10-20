@@ -196,7 +196,7 @@ export default function TripDialogs({
     </ModalSheet>
     <ModalSheet visible={dialog === 'lowBattery' && !!trip.active} title={t('Низкий заряд телефона')} onClose={close}>
       <Text style={s.modalDescription}>{t('Осталось {count}%. Телефон может отключиться. Предупредить сопровождающих?', { count: trip.battery?.level })}</Text>
-      <ActionButton title={t('Предупредить контакты')} busy={busy} disabled={!trip.active?.recipients.some(person => person.consent === 'accepted')} onPress={trip.warnBattery} />
+      <ActionButton title={t('Предупредить контакты')} busy={busy} disabled={!trip.active?.recipients.length} onPress={trip.warnBattery} />
       <ActionButton title={t('Закрыть')} secondary onPress={close} />
     </ModalSheet>
     <ModalSheet visible={dialog === 'checkin' && !!trip.active} title={t("Ты в порядке?")} onClose={close}>
@@ -206,6 +206,12 @@ export default function TripDialogs({
         marginTop: 18
       }}><ActionButton title={t("Я на месте")} icon="check" busy={busy} onPress={trip.onArrive} /></View>
       <ActionButton title={t("Добавить 5 минут")} icon="clock" secondary busy={busy} onPress={trip.onAddTime} />
+    </ModalSheet>
+    <ModalSheet visible={dialog === 'confirmArrival' && !!trip.active} title={t('Вы точно на месте?')} onClose={close}>
+      <Text style={s.modalDescription}>{t('Поездка завершится, а уведомления о задержке остановятся.')}</Text>
+      {!!trip.active?.recipients.length && <Text style={s.rowSubtitle}>{t('Контакты получат сообщение о прибытии.')}</Text>}
+      <View style={{ marginTop: 18 }}><ActionButton title={t('Да, я на месте')} icon="check" busy={busy} onPress={trip.onConfirmArrival} /></View>
+      <ActionButton title={t('Нет, ещё в пути')} secondary disabled={busy} onPress={close} />
     </ModalSheet>
     <ModalSheet visible={dialog === 'cancelJourney'} title={t("Отменить поездку?")} onClose={close}>
       <Text style={s.modalDescription}>{t("Поездка сохранится в истории. Автоматические сообщения при задержке остановятся.")}{trip.active?.recipients.length ? t(" Контакты получат сообщение об отмене.") : ''}</Text>
@@ -286,10 +292,10 @@ export default function TripDialogs({
         maxHeight: 430
       }} keyboardShouldPersistTaps="handled">
         <Text style={s.modalDescription}>{sharedJourney.target.name}</Text>
-        {sharedJourney.consent === 'pending' && ['pending', 'active'].includes(sharedJourney.status) && <>
-          <Text style={s.modalDescription}>{t('Подтвердите, что готовы сопровождать человека. Прогулка начнётся после согласия основного контакта.')}</Text>
-          <ActionButton title={t('Принять сопровождение')} busy={busy} onPress={() => account.respondJourney(sharedJourney.id, 'accepted').catch(failure => setError(failure.message))} />
-          <ActionButton title={t('Отклонить')} secondary disabled={busy} onPress={() => account.respondJourney(sharedJourney.id, 'declined').catch(failure => setError(failure.message))} />
+        {sharedJourney.consent !== 'accepted' && sharedJourney.status === 'active' && <>
+          <Text style={s.modalDescription}>{t('Поездка уже началась. Сообщите, если вы следите за поездкой.')}</Text>
+          <ActionButton title={t('Слежу за поездкой')} busy={busy} onPress={() => account.respondJourney(sharedJourney.id, 'accepted').catch(failure => setError(failure.message))} />
+          <ActionButton title={t('Сейчас не могу')} secondary disabled={busy || sharedJourney.consent === 'declined'} onPress={() => account.respondJourney(sharedJourney.id, 'declined').catch(failure => setError(failure.message))} />
         </>}
         <Text style={s.rowSubtitle}>{sharedJourney.status === 'pending' ? t('Ожидаем сопровождающего') : sharedJourney.status === 'active' ? t("Прибытие в {value0}", {
             value0: new Date(sharedJourney.expectedAt).toLocaleTimeString(locale, {

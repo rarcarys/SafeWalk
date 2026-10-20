@@ -103,7 +103,7 @@ export default function SafeWalk({
         {desktop && <Sidebar page={page} go={go} user={user} unreadCount={account.unreadCount} />}
         <View style={s.main}>
           <AppHeader desktop={desktop} origin={planning.origin} onOpenSOS={() => setDialog('sos')} onOpenProfile={() => go('profile')} />
-          <TripConnectionStatus trip={trip} connected={connected} />
+          <TripConnectionStatus trip={trip} connected={connected} contacts={contacts} />
           {!connected && <View style={s.accountNotice}><Text accessibilityLiveRegion="polite" style={s.accountNoticeText}>{t('Связь с сервером восстанавливается. Данные могут быть устаревшими.')}</Text></View>}
           {account.active?.status === 'pending' && <View style={s.accountNotice}><Text style={s.accountNoticeText}>{t('Ожидаем согласия основного сопровождающего. Прогулка ещё не началась.')}</Text><IconButton icon="navigation" label={t('Маршруты')} onPress={() => go('route')} /></View>}
           {!!account.outbox.items.length && <View style={s.accountNotice}><Text style={s.accountNoticeText}>{t('Неотправленных действий: {count}', { count: account.outbox.items.length })}</Text><IconButton icon="clock" label={t('Посмотреть очередь')} onPress={() => go('route')} /></View>}
