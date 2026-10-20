@@ -10,7 +10,8 @@ export const enableNotifications = async () => {
 export const showMessageNotification = (message, onOpen) => {
   if (document.visibilityState !== 'hidden' || typeof Notification === 'undefined' || Notification.permission !== 'granted') return;
   try {
-    const notification = new Notification('SafeWalk', { body: 'Новое сообщение в SafeWalk', tag: `safewalk-message-${message.id}` });
+    const urgent = message.kind === 'sos';
+    const notification = new Notification(urgent ? 'SOS · SafeWalk' : 'SafeWalk', { body: urgent ? 'Контакт просит о помощи. Откройте SafeWalk прямо сейчас.' : 'Новое сообщение в SafeWalk', tag: `safewalk-message-${message.id}`, requireInteraction: urgent });
     notification.onclick = () => { window.focus(); notification.close(); onOpen(); };
   } catch { /* Mobile browsers may require an installed app for system notifications. */ }
 };

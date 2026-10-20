@@ -1,13 +1,12 @@
 import { useSettings } from '../context/SettingsContext';
 import React, { useEffect, useRef, useState } from 'react';
-import { AppState, Linking, Platform, Pressable, ScrollView, Share, Text, View } from 'react-native';
+import { Linking, Platform, Pressable, ScrollView, Text, TextInput, View } from 'react-native';
 import ModalSheet from './ui/ModalSheet';
 import ActionButton from './ui/ActionButton';
 import IconButton from './ui/IconButton';
-import Avatar from './ui/Avatar';
 import Icon from './ui/Icon';
 import MapCanvas from './maps/MapCanvas';
-import { getCurrentLocation } from '../services/location';
+import { getCurrentLocation, openLocationSettings } from '../services/location';
 import { actionKey } from '../services/journeys';
 import JourneyReadiness from './JourneyReadiness';
 import PlaceEditor from './PlaceEditor';
@@ -35,12 +34,10 @@ export default function TripDialogs({
     setDialog
   } = dialogs;
   const [sosBusy, setSosBusy] = useState(false);
-  const [countdown, setCountdown] = useState(null);
-  const [training, setTraining] = useState(false);
-  const [trainingDone, setTrainingDone] = useState(false);
-  const countdownDeadline = useRef(null);
-  const cancelCountdown = () => { countdownDeadline.current = null; setCountdown(null); };
-  const [includeLocation, setIncludeLocation] = useState(false);
+  const [locationUnavailable, setLocationUnavailable] = useState(false);
+  const [locationPrompt, setLocationPrompt] = useState(null);
+  const sosSending = useRef(false);
+  const [sosNote, setSosNote] = useState('');
   const [error, setError] = useState('');
   const [editingPlaces, setEditingPlaces] = useState(false);
   const [saveKind, setSaveKind] = useState('place');
@@ -49,38 +46,17 @@ export default function TripDialogs({
   const recipients = [contacts.contact, ...contacts.backupIds].map(id => contacts.people[id]).filter(Boolean);
   const busy = sosBusy || account.busy;
   useEffect(() => {
-    if (dialog !== 'sos') cancelCountdown();
-    const subscription = AppState.addEventListener('change', state => {
-      if (state !== 'active') cancelCountdown();
-    });
-    return () => subscription.remove();
-  }, [dialog]);
-  useEffect(() => {
-    if (countdown === null) return;
-    const timer = setInterval(() => {
-      if (!countdownDeadline.current) return;
-      const remaining = Math.max(0, Math.ceil((countdownDeadline.current - Date.now()) / 1000));
-      setCountdown(remaining);
-      if (remaining === 0) {
-        cancelCountdown();
-        if (training) setTrainingDone(true);
-        else void send();
-      }
-    }, 100);
-    return () => clearInterval(timer);
-  }, [countdown !== null, training]);
-  useEffect(() => {
     setError('');
     if (dialog === 'places') setEditingPlaces(false);
     if (dialog === 'sos') {
-      setTraining(false);
-      setTrainingDone(false);
-      setIncludeLocation(false);
+      setLocationUnavailable(false);
+      setLocationPrompt(null);
+      setSosNote('');
       pendingSOS.current = null;
     }
   }, [dialog]);
   const close = () => {
-    if (!busy) { cancelCountdown(); setDialog(null); }
+    if (!busy) setDialog(null);
   };
   const askDeletePlace = (slot, returnTo = 'places') => { setPlaceToDelete({ slot, returnTo }); setDialog('deletePlace'); };
   const saveToSlot = async slot => {
@@ -91,22 +67,30 @@ export default function TripDialogs({
       setDialog(null); notify(t(saveKind === 'route' ? 'Маршрут сохранён' : 'Место сохранено'));
     } catch (failure) { setError(failure.message); }
   };
-  const send = async () => {
-    if (sosBusy) return;
+  const send = async (includeLocation = true) => {
+    if (sosSending.current) return;
+    sosSending.current = true;
     setError('');
     setSosBusy(true);
     try {
       let point;
       if (includeLocation) {
         if (trip.position && Date.now() - trip.position.updatedAt < 60000) point = trip.position;else {
-          const result = await getCurrentLocation();
-          point = { ...result.coords, capturedAt: result.timestamp };
+          try {
+            const result = await getCurrentLocation();
+            point = { ...result.coords, capturedAt: result.timestamp };
+          } catch (failure) {
+            setLocationUnavailable(true);
+            if (['LOCATION_DISABLED', 'LOCATION_PERMISSION_DENIED'].includes(failure.code)) setLocationPrompt(failure.code);
+            throw failure;
+          }
         }
       }
       if (!pendingSOS.current) pendingSOS.current = actionKey();
       const result = await account.sendSOS({
         clientId: pendingSOS.current,
         includeLocation,
+        note: sosNote.trim(),
         position: point ? { ...point, capturedAt: point.capturedAt ?? point.updatedAt ?? Date.now() } : undefined
       });
       if (result.queued) { setDialog(null); notify(t('SOS ожидает отправки. Сервер ещё не получил тревогу. Если нужна помощь, позвоните контакту.')); return; }
@@ -120,24 +104,8 @@ export default function TripDialogs({
     } catch (failure) {
       setError(failure.message);
     } finally {
+      sosSending.current = false;
       setSosBusy(false);
-    }
-  };
-  const share = async () => {
-    const message = t("Мне нужна помощь. Пожалуйста, свяжись со мной.");
-    try {
-      if (Platform.OS === 'web') {
-        if (navigator.share) await navigator.share({
-          text: message
-        });else if (navigator.clipboard) {
-          await navigator.clipboard.writeText(message);
-          notify(t("Текст SOS скопирован. Отправьте его через удобный мессенджер."));
-        } else throw new Error(t("Скопируйте текст: «Мне нужна помощь. Пожалуйста, свяжись со мной»."));
-      } else await Share.share({
-        message
-      });
-    } catch (failure) {
-      if (failure.name !== 'AbortError') setError(failure.message);
     }
   };
   const fail = !!error && <Text role="alert" style={s.mapError}>{t(error)}</Text>;
@@ -220,44 +188,25 @@ export default function TripDialogs({
       }}><ActionButton title={t("Отменить поездку")} danger busy={busy} onPress={trip.onCancel} /></View>
       <ActionButton title={t("Продолжить поездку")} secondary disabled={busy} onPress={close} />
     </ModalSheet>
-    <ModalSheet visible={dialog === 'sos'} title={t("Связаться с вашим кругом")} onClose={close}>
-      <ScrollView style={{
-        maxHeight: 330
-      }} keyboardShouldPersistTaps="handled">
-        <Text style={s.modalDescription}>{t("SOS отправляется в чаты SafeWalk. Получателям нужно открыть приложение, чтобы увидеть сообщение.")}</Text>
-        <Pressable accessibilityRole="checkbox" accessibilityLabel={t('Тестовый режим SOS')} accessibilityState={{ checked: training }} disabled={busy || countdown !== null} style={s.personRow} onPress={() => { setTraining(value => !value); setTrainingDone(false); }}>
-          <View style={[s.checkbox, training && s.checkboxSelected]}>{training && <Icon name="check" size={15} color={colors.white} />}</View>
-          <Text style={[s.rowTitle, s.flex]}>{t('Тестовый режим SOS')}</Text>
-        </Pressable>
-        {training && <Text style={s.rowSubtitle}>{t('Учебная тревога остаётся на этом экране. Сообщения и геопозиция не отправляются.')}</Text>}
-        {trainingDone && <Text accessibilityLiveRegion="polite" style={s.modalDescription}>{t('Проверка завершена. В настоящем режиме SOS был бы отправлен выбранным контактам. Сейчас ничего не отправлено.')}</Text>}
-        <Pressable accessibilityRole="checkbox" accessibilityLabel={t("Добавить геопозицию к SOS")} aria-checked={includeLocation} accessibilityState={{
-          checked: includeLocation
-        }} disabled={busy || countdown !== null} onPress={() => setIncludeLocation(value => !value)} style={s.personRow}>
-          <View style={[s.checkbox, includeLocation && s.checkboxSelected]}>{includeLocation && <Icon name="check" size={15} color={colors.white} />}</View><Text style={[s.rowTitle, s.flex]}>{t("Добавить текущую геопозицию")}</Text>
-        </Pressable>
-        {recipients.map(person => <View key={person.id} style={s.personRow}>
-          <Avatar person={person} small />
-          <View style={s.flex}><Text style={s.rowTitle}>{person.name}</Text><Text style={s.rowSubtitle}>{person.peerId ? t("Чат SafeWalk") : t("Только звонок вручную")}</Text></View>
-          {!!person.phone && !training && <IconButton disabled={countdown !== null} icon="phone" label={t("Позвонить: {value0}", {
-            value0: person.name
-          })} onPress={() => Linking.openURL(`tel:${person.phone}`).catch(() => setError(t("Наберите вручную: {value0}", {
-            value0: person.phone
-          })))} />}
-        </View>)}
-        {!recipients.length && <Text style={s.listFootnote}>{t("Вы ещё не добавили контакты.")}</Text>}
+    <ModalSheet visible={dialog === 'sos'} title={t(locationPrompt ? 'Геопозиция отключена' : 'Отправить SOS')} onClose={() => { if (!busy) { if (locationPrompt) setLocationPrompt(null); else close(); } }}>
+      {locationPrompt ? <>
+        <View style={s.linkInviteHeroIcon}><Icon name="map-pin" size={26} color={colors.blue} /></View>
+        <Text style={s.modalDescription}>{t(Platform.OS === 'web' ? 'В браузере откройте настройки сайта рядом с адресной строкой и разрешите геопозицию. Если она выключена на устройстве, включите её в системных настройках.' : locationPrompt === 'LOCATION_DISABLED' ? 'Включите геопозицию в настройках устройства, затем вернитесь в SafeWalk.' : 'Разрешите SafeWalk доступ к геопозиции в настройках приложения, затем вернитесь сюда.')}</Text>
+        {Platform.OS !== 'web' && <ActionButton title={t('Открыть настройки')} icon="settings" disabled={busy} onPress={async () => { try { await openLocationSettings(locationPrompt); } catch { setError(t('Не удалось открыть настройки. Откройте их вручную.')); } }} />}
+        <ActionButton title={t('Проверить и отправить SOS')} icon="map-pin" busy={busy} onPress={() => { setLocationPrompt(null); send(); }} />
+        <ActionButton title={t('Отправить без геопозиции')} secondary busy={busy} onPress={() => send(false)} />
         {fail}
-      </ScrollView>
-      <View style={{
-        marginTop: 18
-      }}>
-        {countdown !== null ? <>
-          <Text accessibilityLiveRegion="assertive" style={s.modalDescription}>{t(training ? 'Учебный SOS через {count} сек' : 'Отправка SOS через {count} сек', { count: countdown })}</Text>
-          <ActionButton title={t('Отменить отправку SOS')} secondary onPress={cancelCountdown} />
-        </> : <ActionButton title={t(training ? 'Проверить SOS без отправки' : 'Отправить SOS в чаты')} danger={!training} icon="alert-circle" busy={busy} disabled={!training && !recipients.some(person => person.peerId)} onPress={() => { setTrainingDone(false); countdownDeadline.current = Date.now() + 5000; setCountdown(5); }} />}
-      </View>
-      {!recipients.length && <ActionButton title={t("Добавить контакт")} secondary onPress={() => setDialog('addContact')} />}
-      {!training && <ActionButton title={t("Поделиться текстом SOS")} secondary icon="share-2" disabled={busy || countdown !== null} onPress={share} />}
+      </> : <>
+      <Text style={s.modalDescription}>{t('Ваши контакты получат тревогу и местоположение.')}</Text>
+      <View style={s.sosDefaultLocation}><Icon name="map-pin" size={17} color={colors.blue} /><Text style={s.rowSubtitle}>{t('Геопозиция добавляется автоматически')}</Text></View>
+      <TextInput accessibilityLabel={t('Послание SOS')} placeholder={t('Что случилось? Необязательно')} placeholderTextColor={colors.muted} style={s.contactInput} value={sosNote} onChangeText={setSosNote} maxLength={280} editable={!busy} />
+      <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginVertical: 10 }}>{['Позвони мне', 'Не могу говорить', 'Встреть меня'].map(note => <Pressable key={note} accessibilityRole="button" accessibilityLabel={t(note)} disabled={busy} onPress={() => setSosNote(t(note))} style={s.sosQuickNote}><Text style={s.blueText}>{t(note)}</Text></Pressable>)}</View>
+      <Text style={s.rowSubtitle}>{recipients.length ? recipients.map(person => person.name).join(', ') : t('Вы ещё не добавили контакты.')}</Text>
+      {fail}
+      <View style={{ marginTop: 18 }}><ActionButton title={t('Отправить SOS')} danger icon="alert-circle" busy={busy} disabled={!recipients.some(person => person.peerId)} onPress={() => send()} /></View>
+      {locationUnavailable && <ActionButton title={t('Отправить без геопозиции')} secondary busy={busy} onPress={() => send(false)} />}
+      {!recipients.length && <ActionButton title={t('Добавить контакт')} secondary onPress={() => setDialog('addContact')} />}
+      </>}
     </ModalSheet>
     <ModalSheet visible={dialog === 'places'} title={t("Мои места")} onClose={close}>
       <View style={s.placesHeading}><Text style={s.rowSubtitle}>{t('Сохранённые адреса')}</Text><Pressable accessibilityRole="button" accessibilityLabel={t(editingPlaces ? 'Готово' : 'Редактировать места')} disabled={busy} style={s.textAction} onPress={() => setEditingPlaces(value => !value)}><Text style={s.blueText}>{t(editingPlaces ? 'Готово' : 'Изменить')}</Text></Pressable></View>

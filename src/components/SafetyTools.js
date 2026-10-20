@@ -11,7 +11,7 @@ import SettingRow from './ui/SettingRow';
 import IconButton from './ui/IconButton';
 
 const names = { taxi: 'Такси', meeting: 'Встреча', walk: 'Прогулка' };
-const menus = { safetyTools: 'Ещё', safetyTimer: 'Проверь меня', safetyCheckin: 'Ты в порядке?', safetyPresets: 'Мои сценарии', safetyPresetEdit: 'Настроить сценарий', safetyShare: 'Ссылка на прогулку', safetyTraining: 'Тренировка SOS' };
+const menus = { safetyTools: 'Ещё', safetyTimer: 'Проверь меня', safetyCheckin: 'Ты в порядке?', safetyPresets: 'Мои сценарии', safetyPresetEdit: 'Настроить сценарий', safetyShare: 'Ссылка на прогулку' };
 
 export default function SafetyTools({ safety, contacts, account, planning, trip, dialogs, notify }) {
   const { appStyles: s, colors, t, locale } = useSettings();
@@ -19,7 +19,6 @@ export default function SafetyTools({ safety, contacts, account, planning, trip,
   const [busy, setBusy] = useState(false), [error, setError] = useState(''), [feedback, setFeedback] = useState('');
   const [minutes, setMinutes] = useState(15), [selected, setSelected] = useState([]);
   const [presetSlot, setPresetSlot] = useState('walk'), [sharing, setSharing] = useState(false);
-  const [training, setTraining] = useState(0), [countdown, setCountdown] = useState(3);
   const [link, setLink] = useState(null);
   const [clock, setClock] = useState(Date.now());
   const reminded = useRef(null), requestKey = useRef(null);
@@ -35,7 +34,6 @@ export default function SafetyTools({ safety, contacts, account, planning, trip,
       setMinutes(safety.appliedPreset?.minutes || 15);
       setSelected([contacts.contact, ...contacts.backupIds].filter(id => contacts.people[id]?.connectionStatus === 'accepted'));
     }
-    if (dialog === 'safetyTraining') { setTraining(0); setCountdown(3); }
   }, [dialog]);
   useEffect(() => {
     const timer = safety.timer;
@@ -44,12 +42,6 @@ export default function SafetyTools({ safety, contacts, account, planning, trip,
       setDialog('safetyCheckin');
     }
   }, [safety.timer?.expectedAt, clock, dialog]);
-  useEffect(() => {
-    if (dialog !== 'safetyTraining' || training !== 1) return;
-    if (countdown === 0) { setTraining(2); return; }
-    const timer = setTimeout(() => setCountdown(value => Math.max(0, value - 1)), 1000);
-    return () => clearTimeout(timer);
-  }, [dialog, training, countdown]);
   const run = async operation => {
     if (busy) return;
     setBusy(true); setError(''); setFeedback('');
@@ -105,19 +97,10 @@ export default function SafetyTools({ safety, contacts, account, planning, trip,
     </View>}
     <ModalSheet visible={visible} title={t(menus[dialog] || '')} onClose={close}>
       {dialog === 'safetyTools' && <>
-        <PreferenceRow title={t('Тренировка SOS')} icon="shield" value={t('Без отправки сообщений')} onPress={() => setDialog('safetyTraining')} />
         <PreferenceRow title={t('Проверь меня')} icon="clock" value={safety.timer ? t('Проверка включена') : t('Таймер без маршрута')} onPress={() => setDialog('safetyTimer')} />
         <PreferenceRow title={t('Мои сценарии')} icon="sliders" value={t('Такси, встреча и прогулка')} onPress={() => setDialog('safetyPresets')} />
         <PreferenceRow title={t('Ссылка на прогулку')} icon="link" value={t('Временный доступ без аккаунта')} last onPress={() => setDialog('safetyShare')} />
       </>}
-      {dialog === 'safetyTraining' && <View style={{ gap: 16 }}>
-        <Text style={[s.groupLabel, { color: colors.blue }]}>{t('ТРЕНИРОВКА — сообщения не отправляются')}</Text>
-        <Text style={s.modalDescription}>{t(training === 0 ? 'Пройдите пример отправки SOS. Контакты не получат сообщений.' : training === 1 ? 'Тренировочный отсчёт: {count}' : training === 2 ? 'Пример: тревога показана выбранным контактам.' : 'Пример: контакт подтвердил получение. Тренировка завершена.', { count: countdown })}</Text>
-        {training === 0 && <ActionButton title={t('Начать тренировку')} icon="play" onPress={() => { setCountdown(3); setTraining(1); }} />}
-        {training === 1 && <ActionButton title={t('Отменить тренировку')} secondary onPress={() => setTraining(0)} />}
-        {training === 2 && <ActionButton title={t('Смоделировать подтверждение')} onPress={() => setTraining(3)} />}
-        {training === 3 && <ActionButton title={t('Завершить тренировку')} onPress={close} />}
-      </View>}
       {['safetyTimer', 'safetyCheckin'].includes(dialog) && <View style={{ gap: 12 }}>
         {safety.timer ? <>
           <Text style={s.cardTitle}>{t('Проверка в {time}', { time: new Date(safety.timer.expectedAt).toLocaleTimeString(locale, { hour: '2-digit', minute: '2-digit' }) })}</Text>
@@ -173,7 +156,7 @@ export default function SafetyTools({ safety, contacts, account, planning, trip,
         {safety.links.map(item => <PreferenceRow key={item.id} title={t('Отозвать ссылку')} value={t('Доступ до {time}', { time: new Date(item.expiresAt).toLocaleTimeString(locale, { hour: '2-digit', minute: '2-digit' }) })} icon="x-circle" disabled={busy} onPress={() => run(async () => { await api.revokeJourneyLink(item.id); if (link?.id === item.id) setLink(null); })} />)}
         <Text style={s.rowSubtitle}>{t('Ссылка работает, пока доступен сервер SafeWalk. Для локального сервера получатель должен быть в той же сети.')}</Text>
       </View>}
-      {visible && !!(error || (dialog !== 'safetyTraining' && safety.error)) && <Text role="alert" style={s.mapError}>{t(error || safety.error)}</Text>}
+      {visible && !!(error || safety.error) && <Text role="alert" style={s.mapError}>{t(error || safety.error)}</Text>}
       {visible && !!feedback && <Text accessibilityLiveRegion="polite" style={s.blueText}>{t(feedback)}</Text>}
     </ModalSheet>
   </>;

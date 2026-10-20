@@ -50,6 +50,7 @@ async function createJourneyService(database, now = Date.now) {
     await database.exec("ALTER TABLE journey_recipients ADD COLUMN consent TEXT NOT NULL DEFAULT 'pending'");
   }
   if (!(await database.prepare('PRAGMA table_info(preferences)').all()).some((column) => column.name === 'retention_days')) await database.exec('ALTER TABLE preferences ADD COLUMN retention_days INTEGER NOT NULL DEFAULT 30');
+  if (!(await database.prepare('PRAGMA table_info(sos_recipients)').all()).some(column => column.name === 'route_started_at')) await database.exec('ALTER TABLE sos_recipients ADD COLUMN route_started_at INTEGER');
   if (!(await database.prepare('PRAGMA table_info(sos_recipients)').all()).some((column) => column.name === 'role')) {
     await database.exec("ALTER TABLE sos_recipients ADD COLUMN role TEXT NOT NULL DEFAULT 'primary'");
     await database.exec("UPDATE sos_recipients SET role = 'backup' WHERE EXISTS (SELECT 1 FROM circle_contacts c WHERE c.owner_id = sos_recipients.owner_id AND c.peer_id = sos_recipients.peer_id AND c.backup = 1)");
@@ -149,12 +150,12 @@ async function createJourneyService(database, now = Date.now) {
       JOIN journey_recipients r ON r.journey_id = j.id JOIN users u ON u.id = j.owner_id
       WHERE r.peer_id = ? ORDER BY CASE WHEN j.status = 'active' THEN 0 ELSE 1 END, j.started_at DESC LIMIT 20`).all(owner), async (row) => await serialize(row, true));
     const unreadCount = (await database.prepare(`SELECT COUNT(*) AS count FROM chat_messages m WHERE recipient_id = ? AND id > COALESCE((SELECT last_id FROM chat_reads WHERE owner_id = ? AND peer_id = m.sender_id), 0)`).get(owner, owner)).count;
-    const sentSOS = await database.prepare(`SELECT e.client_id AS clientId, e.created_at AS createdAt, r.peer_id AS peerId, u.name, r.acknowledged_at AS acknowledgedAt,
+    const sentSOS = await database.prepare(`SELECT e.owner_id AS ownerId, e.client_id AS clientId, e.created_at AS createdAt, r.peer_id AS peerId, u.name, r.acknowledged_at AS acknowledgedAt, r.route_started_at AS routeStartedAt,
       CASE WHEN COALESCE(cr.last_id, 0) >= r.message_id THEN 1 ELSE 0 END AS wasRead
       FROM sos_events e JOIN sos_recipients r ON r.owner_id = e.owner_id AND r.client_id = e.client_id
       JOIN users u ON u.id = r.peer_id LEFT JOIN chat_reads cr ON cr.owner_id = r.peer_id AND cr.peer_id = e.owner_id
       WHERE e.owner_id = ? ORDER BY e.created_at DESC LIMIT 30`).all(owner);
-    const receivedSOS = await database.prepare(`SELECT e.owner_id AS ownerId, e.client_id AS clientId, e.created_at AS createdAt, u.name, r.acknowledged_at AS acknowledgedAt
+    const receivedSOS = await database.prepare(`SELECT e.owner_id AS ownerId, e.client_id AS clientId, e.created_at AS createdAt, u.name, r.acknowledged_at AS acknowledgedAt, r.route_started_at AS routeStartedAt
       FROM sos_recipients r JOIN sos_events e ON e.owner_id = r.owner_id AND e.client_id = r.client_id JOIN users u ON u.id = e.owner_id
       WHERE r.peer_id = ? ORDER BY e.created_at DESC LIMIT 20`).all(owner);
     response.json({ active: await serialize(active), history, received, sentSOS, receivedSOS, preferences: await preferences(owner), favoriteRoutes: (await database.prepare('SELECT slot, plan FROM favorite_routes WHERE owner_id = ?').all(owner)).map((row) => ({ slot: row.slot, ...JSON.parse(row.plan) })), places: (await database.prepare('SELECT slot, point FROM saved_places WHERE owner_id = ? ORDER BY slot').all(owner)).map((row) => ({ slot: row.slot, ...JSON.parse(row.point) })), unreadCount });
@@ -303,6 +304,8 @@ async function createJourneyService(database, now = Date.now) {
   }));
   router.post('/sos/send', database.handle(async (request, response) => {
     const body = request.body || {};
+    if (body.note !== undefined && (typeof body.note !== 'string' || body.note.length > 280)) return response.status(400).json({ message: 'Послание SOS — не более 280 символов' });
+    const note = (body.note || '').trim();
     if (!keyValid(body.clientId) || typeof body.includeLocation !== 'boolean' || body.includeLocation && !positionValid(body.position)) return response.status(400).json({ message: 'Проверьте получателей и геопозицию SOS' });
     const previous = await database.prepare('SELECT payload FROM sos_events WHERE owner_id = ? AND client_id = ?').get(request.user.id, body.clientId);
     if (previous) return response.json(JSON.parse(previous.payload));
@@ -310,12 +313,14 @@ async function createJourneyService(database, now = Date.now) {
     const peers = await filterAsync(selected, async (contact) => contact.peer_id && (await accepted(database, request.user.id, contact.peer_id)));
     if (!peers.length) return response.status(400).json({ message: 'Добавьте хотя бы один контакт с аккаунтом SafeWalk. Для телефонных контактов используйте звонок.' });
     let text = `SOS от ${request.user.name}. Пожалуйста, свяжитесь со мной — мне нужна помощь.`;
+    if (note) text += ` Послание: ${note}`;
     if (body.includeLocation) {
       const capturedAt = body.position.capturedAt ?? now();
       if (!Number.isFinite(capturedAt) || capturedAt < now() - 10 * 60000 || capturedAt > now() + 30000) return response.status(400).json({ message: 'Геопозиция SOS устарела. Получите новое положение или отправьте SOS без координат.' });
       text += ` Геопозиция на ${new Date(capturedAt).toISOString()}: https://www.openstreetmap.org/?mlat=${body.position.latitude}&mlon=${body.position.longitude}#map=17/${body.position.latitude}/${body.position.longitude}`;
     }
-    const result = { sentCount: peers.length, skippedNames: selected.filter((contact) => !peers.includes(contact)).map((contact) => contact.name), includedLocation: body.includeLocation };
+    const result = { sentCount: peers.length, skippedNames: selected.filter((contact) => !peers.includes(contact)).map((contact) => contact.name), includedLocation: body.includeLocation, note,
+      position: body.includeLocation ? { latitude: body.position.latitude, longitude: body.position.longitude, accuracy: body.position.accuracy ?? null, capturedAt: body.position.capturedAt ?? now() } : null };
     await transaction(async () => {
       await database.prepare('INSERT INTO sos_events (owner_id, client_id, payload, created_at) VALUES (?, ?, ?, ?)').run(request.user.id, body.clientId, JSON.stringify(result), now());
       for (const peer of peers) {
@@ -326,6 +331,29 @@ async function createJourneyService(database, now = Date.now) {
       }
     });
     response.status(201).json(result);
+  }));
+  router.get('/sos/:owner/:client', database.handle(async (request, response) => {
+    const { owner, client } = request.params;
+    if (!(await accepted(database, owner, request.user.id))) return response.status(403).json({ message: 'Доступ закрыт' });
+    const row = await database.prepare(`SELECT e.payload, e.created_at, u.name, r.route_started_at FROM sos_events e JOIN users u ON u.id = e.owner_id
+      JOIN sos_recipients r ON r.owner_id = e.owner_id AND r.client_id = e.client_id
+      WHERE e.owner_id = ? AND e.client_id = ? AND r.peer_id = ?`).get(owner, client, request.user.id);
+    if (!row) return response.status(404).json({ message: 'Тревога не найдена' });
+    const payload = JSON.parse(row.payload);
+    response.json({ sos: { name: row.name, createdAt: row.created_at, note: payload.note || '', position: payload.position || null, routeStartedAt: row.route_started_at } });
+  }));
+  router.post('/sos/:owner/:client/navigate', database.handle(async (request, response) => {
+    const { owner, client } = request.params;
+    if (!(await accepted(database, owner, request.user.id))) return response.status(403).json({ message: 'Доступ закрыт' });
+    const row = await database.prepare(`SELECT e.payload FROM sos_events e JOIN sos_recipients r ON r.owner_id = e.owner_id AND r.client_id = e.client_id WHERE e.owner_id = ? AND e.client_id = ? AND r.peer_id = ?`).get(owner, client, request.user.id);
+    if (!row) return response.status(404).json({ message: 'Тревога не найдена' });
+    if (!JSON.parse(row.payload).position) return response.status(409).json({ message: 'В SOS нет геопозиции для маршрута' });
+    await transaction(async () => {
+      await database.prepare('UPDATE sos_recipients SET acknowledged_at = COALESCE(acknowledged_at, ?), route_started_at = COALESCE(route_started_at, ?) WHERE owner_id = ? AND client_id = ? AND peer_id = ?').run(now(), now(), owner, client, request.user.id);
+      await message(request.user.id, owner, `sos_route_${client}_${request.user.id}`, `${request.user.name} построил(а) маршрут к вам и направляется на помощь.`);
+    });
+    const state = await database.prepare('SELECT route_started_at AS routeStartedAt FROM sos_recipients WHERE owner_id = ? AND client_id = ? AND peer_id = ?').get(owner, client, request.user.id);
+    response.json({ ok: true, ...state });
   }));
   router.post('/sos/:owner/:client/acknowledge', database.handle(async (request, response) => {
     const owner = request.params.owner,client = request.params.client;

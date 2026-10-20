@@ -23,6 +23,10 @@ import useSafetyTools from './hooks/useSafetyTools';
 import SafetyTools from './components/SafetyTools';
 import TripConnectionStatus from './components/TripConnectionStatus';
 import usePresence from './hooks/usePresence';
+import useSOSAlerts from './hooks/useSOSAlerts';
+import SOSAlert from './components/SOSAlert';
+import SOSDetails from './components/SOSDetails';
+import { request } from './services/api';
 export default function SafeWalk({
   user,
   onUpdateUser,
@@ -62,6 +66,7 @@ export default function SafeWalk({
   } = dialogs;
   const [selectedChat, setSelectedChat] = useState(null);
   const [selectedJourney, setSelectedJourney] = useState(null);
+  const [selectedSOS, setSelectedSOS] = useState(null);
   const sharedJourney = account.received.find(item => item.id === selectedJourney);
   useActionSOS({ ownerId: user.id, account, notify: notifications.notify, setDialog, t });
   useEffect(() => listenNotification(data => {
@@ -88,6 +93,8 @@ export default function SafeWalk({
     const person = Object.values(contacts.people).find(item => item.peerId === message.senderId);
     openChat({ ...person, peerId: message.senderId, name: person?.name || message.senderName });
   } });
+  const urgentSOS = useSOSAlerts(user.id);
+  useEffect(() => { if (urgentSOS.alert) setDialog(null); }, [urgentSOS.alert?.senderId, urgentSOS.alert?.clientId]);
   useEffect(() => { setVisibleConversation(visiblePeerId); return () => setVisibleConversation(null); }, [visiblePeerId]);
   const inspectContact = id => {
     contacts.setInspectedContact(id);
@@ -117,7 +124,7 @@ export default function SafeWalk({
           backupCount: contacts.backupIds.length
         }} sharing={preferences.sharing} dialogs={dialogs} navigation={navigation} desktop={desktop} /> : page === 'chats' ? <ChatsScreen user={user} outbox={account.outbox} contacts={contacts} selectedChat={selectedChat} onSelectChat={setSelectedChat} onAddContact={() => setDialog('addContact')} onLinkContact={inspectContact} /> : <ScrollView ref={scroll} style={s.flex} contentContainerStyle={[s.listScrollContent, ['settings', 'profile'].includes(page) && s.settingsScrollContent]} showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
 
-              {page === 'route' ? <JourneysScreen account={account} trip={trip} onOpenMap={() => go('home')} onCancel={() => setDialog('cancelJourney')} onRepeat={point => {
+              {page === 'route' ? <JourneysScreen onOpenSOSDetails={setSelectedSOS} account={account} trip={trip} onOpenMap={() => go('home')} onCancel={() => setDialog('cancelJourney')} onRepeat={point => {
             planning.selectTarget(point);
             go('home');
           }} onSelectReceived={id => {
@@ -128,7 +135,7 @@ export default function SafeWalk({
         </View>
       </View>
       {!desktop && <BottomNavigation page={page} go={go} bottomInset={insets.bottom} unreadCount={account.unreadCount} />}
-      {!!messageAlerts.message && !dialogs.dialog && <View style={[s.messageAlert, { top: insets.top + 66, maxWidth: Math.min(width - 24, 440) }]}>
+      {!!messageAlerts.message && !urgentSOS.alert && !dialogs.dialog && <View style={[s.messageAlert, { top: insets.top + 66, maxWidth: Math.min(width - 24, 440) }]}>
         <Pressable accessibilityRole="button" accessibilityLabel={t('Открыть сообщение от {name}', { name: messageAlerts.message.senderName })} onPress={messageAlerts.open} style={s.messageAlertOpen}>
           <View style={s.messageAlertIcon}><Icon name="message-circle" size={20} /></View>
           <View style={s.flex}><Text style={s.rowTitle} numberOfLines={1}>{messageAlerts.message.senderName}</Text><Text style={s.rowSubtitle} numberOfLines={2}>{messageAlerts.message.text}</Text></View>
@@ -146,5 +153,10 @@ export default function SafeWalk({
       go('home');
     }} />
 
+      <SOSDetails selected={selectedSOS} onClose={() => setSelectedSOS(null)} onHandled={account.refresh} />
+      <SOSAlert alert={urgentSOS.alert} count={urgentSOS.count} onOpenDetails={alert => { urgentSOS.dismiss(alert); setSelectedSOS(alert); }} onDismiss={urgentSOS.dismiss} onAcknowledge={async alert => {
+        await request(`journeys/sos/${encodeURIComponent(alert.senderId)}/${encodeURIComponent(alert.clientId)}/acknowledge`, { method: 'POST', body: {}, expectedOwner: user.id });
+        urgentSOS.dismiss(alert); account.refresh();
+      }} onOpenChat={alert => { openChat({ peerId: alert.senderId, name: alert.senderName }); urgentSOS.dismiss(alert); }} />
     </KeyboardAvoidingView>;
 }

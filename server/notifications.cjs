@@ -25,12 +25,39 @@ async function createNotificationService(database, { now = Date.now, enabled = p
     INSERT OR IGNORE INTO push_jobs(owner_id, kind, reference, created_at) VALUES (NEW.recipient_id, 'invitation', NEW.sender_id, NEW.created_at);
   END;`);
   const router = express.Router();
+  router.get('/sos', database.handle(async (request, response) => {
+    const alerts = await database.prepare(`SELECT e.owner_id AS senderId, e.client_id AS clientId, e.created_at AS sentAt,
+      u.name AS senderName, m.id, m.text, e.payload FROM sos_recipients r
+      JOIN sos_events e ON e.owner_id = r.owner_id AND e.client_id = r.client_id
+      JOIN users u ON u.id = e.owner_id JOIN chat_messages m ON m.id = r.message_id
+      WHERE r.peer_id = ? AND r.acknowledged_at IS NULL AND e.created_at >= ?
+      AND EXISTS (SELECT 1 FROM contact_requests c WHERE c.status = 'accepted' AND
+        ((c.sender_id = e.owner_id AND c.recipient_id = r.peer_id) OR (c.sender_id = r.peer_id AND c.recipient_id = e.owner_id)))
+      AND NOT EXISTS (SELECT 1 FROM user_blocks b WHERE (b.owner_id = r.peer_id AND b.peer_id = e.owner_id) OR (b.owner_id = e.owner_id AND b.peer_id = r.peer_id))
+      ORDER BY e.created_at, e.owner_id, e.client_id LIMIT 50`).all(request.user.id, now() - 86400000);
+    response.json({ alerts: alerts.map(({ payload, ...alert }) => ({ ...alert, kind: 'sos', note: JSON.parse(payload).note || '' })) });
+  }));
+  await database.exec(`CREATE TABLE IF NOT EXISTS message_receipts (
+    message_id INTEGER PRIMARY KEY REFERENCES chat_messages(id) ON DELETE CASCADE,
+    received_at INTEGER NOT NULL
+  )`);
+  router.post('/received', database.handle(async (request, response) => {
+    const ids = request.body?.ids;
+    if (!Array.isArray(ids) || !ids.length || ids.length > 50 || ids.some(id => !Number.isSafeInteger(id) || id < 1)) return response.status(400).json({ message: 'Некорректные сообщения' });
+    await database.transaction(async () => {
+      for (const id of ids) await database.prepare(`INSERT OR IGNORE INTO message_receipts(message_id, received_at)
+        SELECT id, ? FROM chat_messages WHERE id = ? AND recipient_id = ?`).run(now(), id, request.user.id);
+    });
+    response.json({ ok: true });
+  }));
   router.get('/messages', database.handle(async (request, response) => {
     const after = request.query.after;
     if (after !== undefined && !/^\d{1,15}$/.test(after)) return response.status(400).json({ message: 'Некорректный курсор уведомлений' });
     const latest = (await database.prepare('SELECT MAX(id) AS id FROM chat_messages WHERE recipient_id = ?').get(request.user.id))?.id || 0;
     if (after === undefined) return response.json({ messages: [], cursor: latest, hasMore: false });
-    const messages = await database.prepare(`SELECT m.id, m.sender_id AS senderId, u.name AS senderName, m.text, m.sent_at AS sentAt FROM chat_messages m JOIN users u ON u.id = m.sender_id
+    const messages = await database.prepare(`SELECT m.id, m.sender_id AS senderId, u.name AS senderName, m.text, m.sent_at AS sentAt,
+      CASE WHEN EXISTS (SELECT 1 FROM sos_recipients r WHERE r.message_id = m.id AND r.peer_id = m.recipient_id) THEN 'sos' ELSE 'message' END AS kind
+      FROM chat_messages m JOIN users u ON u.id = m.sender_id
       WHERE m.recipient_id = ? AND m.id > ? AND m.id > COALESCE((SELECT last_id FROM chat_reads WHERE owner_id = m.recipient_id AND peer_id = m.sender_id), 0)
       AND NOT EXISTS (SELECT 1 FROM user_blocks b WHERE (b.owner_id = m.recipient_id AND b.peer_id = m.sender_id) OR (b.owner_id = m.sender_id AND b.peer_id = m.recipient_id))
       ORDER BY m.id LIMIT 51`).all(request.user.id, Number(after));

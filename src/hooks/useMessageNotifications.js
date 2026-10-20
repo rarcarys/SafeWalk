@@ -19,7 +19,7 @@ export default function useMessageNotifications({ ownerId, visiblePeerId, onOpen
           const result = await request(`notifications/messages${cursor === null ? '' : `?after=${cursor}`}`);
           if (stopped) return;
           cursor = result.cursor; more = result.hasMore;
-          const fresh = result.messages.filter(item => !(AppState.currentState === 'active' && item.senderId === latest.current.visiblePeerId));
+          const fresh = result.messages.filter(item => item.kind !== 'sos' && !(AppState.currentState === 'active' && item.senderId === latest.current.visiblePeerId));
           const incoming = fresh.at(-1);
           if (incoming) {
             setMessage(incoming);
