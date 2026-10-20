@@ -2,6 +2,22 @@ import { createScaledStyles } from './scaleStyles';
 
 export function createAppStyles(colors, fontScale) {
   return createScaledStyles({
+  linkInviteIntro: { paddingTop: 8, paddingBottom: 22, gap: 10 },
+  linkInviteHeroIcon: { width: 60, height: 60, borderRadius: 22, backgroundColor: colors.selected, alignSelf: 'center', alignItems: 'center', justifyContent: 'center', marginBottom: 6 },
+  linkInviteTitle: { fontSize: 23, lineHeight: 30, fontWeight: '600', color: colors.ink, textAlign: 'center' },
+  linkInviteDescription: { fontSize: 14, lineHeight: 21, color: colors.muted, textAlign: 'center', paddingHorizontal: 8 },
+  linkInviteInitial: { fontSize: 26, fontWeight: '600', color: colors.blue },
+  linkInviteCard: { borderWidth: 1, borderColor: colors.border, borderRadius: 20, padding: 16, backgroundColor: colors.canvas },
+  linkInviteCardHeading: { flexDirection: 'row', alignItems: 'center', gap: 10 },
+  linkInviteSmallIcon: { width: 40, height: 40, borderRadius: 14, backgroundColor: colors.selected, alignItems: 'center', justifyContent: 'center' },
+  linkInviteMeta: { fontSize: 12, lineHeight: 18, color: colors.muted },
+  linkInviteHint: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, marginTop: 12, marginBottom: 22 },
+  linkInviteHintText: { fontSize: 12, lineHeight: 18, color: colors.muted, flexShrink: 1 },
+  linkInviteReceiveAction: { minHeight: 60, flexDirection: 'row', alignItems: 'center', gap: 12, paddingVertical: 16, borderTopWidth: 1, borderTopColor: colors.line },
+  linkInviteTextAction: { minHeight: 44, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, paddingVertical: 10 },
+  linkInviteActionText: { fontSize: 12, lineHeight: 18, color: colors.muted },
+  linkInviteURL: { fontSize: 12, lineHeight: 19, color: colors.ink, padding: 12, borderRadius: 12, backgroundColor: colors.surface },
+  linkInviteBack: { minHeight: 44, alignSelf: 'flex-start', flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 6 },
   root: {
     flex: 1,
     backgroundColor: colors.surface,

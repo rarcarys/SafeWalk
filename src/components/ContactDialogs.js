@@ -119,6 +119,7 @@ export default function ContactDialogs({
       </View>
     </ModalSheet>
     <ModalSheet visible={dialog === 'addContact'} title={t("Добавить контакт")} onClose={close}>
+      <PreferenceRow title={t('Приглашение по ссылке')} icon="link" disabled={busy} onPress={() => setDialog('contactLinks')} />
       <View style={s.modeControl}>
         {[['email', t("В SafeWalk")], ['phone', t("По телефону")]].map(([id, label]) => <Pressable key={id} accessibilityRole="button" accessibilityLabel={label} aria-pressed={mode === id} disabled={busy} onPress={() => setMode(id)} style={[s.modeOption, mode === id && s.modeSelected]}>
             <Text style={s.modeLabel}>{label}</Text>

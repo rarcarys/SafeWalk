@@ -6,6 +6,7 @@ import Icon from './ui/Icon';
 import ActionButton from './ui/ActionButton';
 import ContactDialogs from './ContactDialogs';
 import TripDialogs from './TripDialogs';
+import ContactLinks from './ContactLinks';
 export default function JourneyDialogs({
   dialogs,
   planning,
@@ -117,5 +118,6 @@ export default function JourneyDialogs({
       </ModalSheet>
       <TripDialogs dialogs={dialogs} planning={planning} trip={trip} account={account} contacts={contacts} notify={notify} sharedJourney={sharedJourney} onOpenChat={onOpenChat} onOpenMap={onOpenMap} />
       <ContactDialogs dialogs={dialogs} contacts={contacts} onOpenChat={onOpenChat} />
+      <ContactLinks dialogs={dialogs} contacts={contacts} />
     </>;
 }

@@ -48,6 +48,7 @@ async function createCircleRouter(database, now = Date.now) {
     );
   `);
   const router = express.Router();
+  router.use('/links', await require('./contact-links.cjs').createContactLinks(database, now));
   await database.exec(`CREATE TABLE IF NOT EXISTS message_reactions (
     message_id INTEGER NOT NULL REFERENCES chat_messages(id) ON DELETE CASCADE,
     owner_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
