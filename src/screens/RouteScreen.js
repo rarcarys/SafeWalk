@@ -2,6 +2,8 @@ import { useSettings } from '../context/SettingsContext';
 import { View, Text, Pressable, Linking } from 'react-native';
 import ActionButton from '../components/ui/ActionButton';
 import Icon from '../components/ui/Icon';
+import IconButton from '../components/ui/IconButton';
+import ModalSheet from '../components/ui/ModalSheet';
 import React, { useState } from 'react';
 import { formatDuration } from '../services/duration.cjs';
 import { transportLabel } from '../data/transports';
@@ -16,6 +18,8 @@ export default function RouteScreen({
   contact,
   onChooseContact,
   onArrive,
+  onShareJourney,
+  onNotificationStatus,
   onAddTime,
   onOpenSettings,
   active,
@@ -31,7 +35,10 @@ export default function RouteScreen({
     t
   } = useSettings();
   const [navigationError, setNavigationError] = useState('');
+  const [more, setMore] = useState(false);
+  const watching = active?.recipients.filter(person => person.consent === 'accepted') || [];
   return <>
+      <View style={s.cardHeading}><Text style={[s.groupLabel, s.flex]}>{t('МОЯ ПОЕЗДКА')}</Text>{active && <IconButton icon="more-horizontal" label={t('Действия с поездкой')} onPress={() => setMore(true)} />}</View>
       <View style={s.tripState}>
         <View style={[s.stateDot, routeState === 'arrived' && {
         backgroundColor: colors.success
@@ -65,9 +72,9 @@ export default function RouteScreen({
         }) : t("Задержка: {value0}", {
           value0: formatDuration(Math.abs(remainingMinutes || 0), t)
         })}</Text>
-        {active.recipients.map(person => <Text key={person.peerId} style={s.rowSubtitle}>{person.name}: {t(({ pending: 'ожидает ответа', accepted: 'сопровождение принято', declined: 'сопровождение отклонено' })[person.consent])}</Text>)}
+        {!!active.recipients.length && !active.recipients.some(person => person.consent === 'accepted') && <Text style={s.rowSubtitle}>{t('Контакты уведомлены, пока никто не смотрит')}</Text>}
+        {!!watching.length && <Text style={s.rowSubtitle}>{t('Следят за поездкой')}: {watching.map(person => person.name).join(', ')}</Text>}
         {!active.recipients.length && <Text style={s.rowSubtitle}>{t('Без сопровождения')}</Text>}
-        <Text style={s.rowSubtitle}>{trackingStatus === 'active' ? active.sharing ? t("Геопозиция обновляется для контактов") : t("Геопозиция обновляется только на устройстве") : trackingStatus === 'pending' ? t("Определяем геопозицию…") : trackingStatus === 'paused' ? t("Геопозиция приостановлена") : t("Геопозиция не обновляется")}</Text>
         {!!trackingError && <Text role="alert" style={s.mapError}>{trackingError}</Text>}
       </>}
       <View style={{
@@ -75,21 +82,25 @@ export default function RouteScreen({
     }} />
       <ActionButton title={routeState === 'arrived' ? t("Готово") : t("Я на месте")} icon={routeState === 'arrived' ? undefined : 'check'} onPress={onArrive} busy={busy} disabled={routeState === 'pending'} />
 
-      {routeState === 'active' && <ActionButton title={t("Добавить 5 минут")} icon="clock" secondary onPress={onAddTime} busy={busy} />}
+      <ModalSheet visible={more && !!active} title={t('Действия с поездкой')} onClose={() => { if (!busy) setMore(false); }}>
+      <ActionButton title={t('Ссылка на поездку')} icon="share-2" secondary disabled={busy} onPress={() => { setMore(false); onShareJourney(); }} />
+      <ActionButton title={t('Статус уведомлений')} icon="bell" secondary disabled={busy} onPress={() => { setMore(false); onNotificationStatus(); }} />
+      {routeState === 'active' && <ActionButton title={t("Добавить 5 минут")} icon="clock" secondary onPress={() => { setMore(false); onAddTime(); }} busy={busy} />}
       {active && <>
         <ActionButton title={t("Открыть навигацию")} icon="external-link" secondary onPress={() => {
         setNavigationError('');
         Linking.openURL(`https://www.google.com/maps/dir/?api=1&origin=${active.origin.latitude},${active.origin.longitude}&destination=${active.target.latitude},${active.target.longitude}&travelmode=${active.transport === 'walk' ? 'walking' : active.transport === 'bus' ? 'transit' : 'driving'}`).catch(() => setNavigationError(t("Не удалось открыть карту. Попробуйте ещё раз.")));
       }} />
         {!!navigationError && <Text role="alert" style={s.mapError}>{navigationError}</Text>}
-        <Pressable accessibilityRole="button" accessibilityLabel={t("Отменить поездку")} onPress={onCancel} disabled={busy} style={s.textAction}><Text style={s.dangerText}>{t("Отменить поездку")}</Text></Pressable>
+        <Pressable accessibilityRole="button" accessibilityLabel={t("Отменить поездку")} onPress={() => { setMore(false); onCancel(); }} disabled={busy} style={s.textAction}><Text style={s.dangerText}>{t("Отменить поездку")}</Text></Pressable>
       </>}
-      <Pressable accessibilityRole="button" accessibilityLabel={t("Сценарий при задержке")} onPress={onOpenSettings} style={s.delayLink}>
+      <Pressable accessibilityRole="button" accessibilityLabel={t("Сценарий при задержке")} onPress={() => { setMore(false); onOpenSettings(); }} style={s.delayLink}>
 
         <Text style={s.delayLinkText}>{t("Настройки связи при задержке")}
 
         </Text>
         <Icon name="chevron-right" size={14} color={colors.muted} />
       </Pressable>
+      </ModalSheet>
     </>;
 }

@@ -530,6 +530,8 @@ export default function useJourney(ownerId) {
       remainingMinutes: active ? Math.ceil((active.expectedAt - clock) / 60000) : null,
       onArrive,
       onConfirmArrival: () => act('arrive'),
+      onShareJourney: () => setDialog('safetyShare'),
+      onNotificationStatus: () => setDialog('notificationStatus'),
       onAddTime: () => act('extend'),
       onCancel: () => act('cancel'),
       active,

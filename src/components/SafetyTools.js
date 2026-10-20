@@ -100,6 +100,7 @@ export default function SafetyTools({ safety, contacts, account, planning, trip,
         <PreferenceRow title={t('Проверь меня')} icon="clock" value={safety.timer ? t('Проверка включена') : t('Таймер без маршрута')} onPress={() => setDialog('safetyTimer')} />
         <PreferenceRow title={t('Мои сценарии')} icon="sliders" value={t('Такси, встреча и прогулка')} onPress={() => setDialog('safetyPresets')} />
         <PreferenceRow title={t('Ссылка на прогулку')} icon="link" value={t('Временный доступ без аккаунта')} last onPress={() => setDialog('safetyShare')} />
+        <PreferenceRow title={t('Статус уведомлений')} icon="bell" onPress={() => setDialog('notificationStatus')} />
       </>}
       {['safetyTimer', 'safetyCheckin'].includes(dialog) && <View style={{ gap: 12 }}>
         {safety.timer ? <>
@@ -148,6 +149,9 @@ export default function SafetyTools({ safety, contacts, account, planning, trip,
             const result = await api.createJourneyLink({ journeyId: account.active.id, minutes });
             setLink({ ...result.link, url: `${apiBase()}${result.link.path}` });
           })} />
+        </> : account.active?.status === 'active' ? <>
+          <Text style={s.rowSubtitle}>{t('Чтобы поделиться поездкой, разрешите передачу геопозиции. Получатель ссылки сможет видеть ваше местоположение.')}</Text>
+          <ActionButton title={t('Разрешить передачу геопозиции')} secondary busy={busy} onPress={() => run(async () => { await account.setPreference('sharing', true); })} />
         </> : <Text style={s.rowSubtitle}>{t('Для ссылки нужна активная прогулка с передачей геопозиции')}</Text>}
         {link && safety.links.some(item => item.id === link.id) && <>
           <Text selectable style={s.rowSubtitle}>{link.url}</Text>

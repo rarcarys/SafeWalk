@@ -50,11 +50,39 @@ async function createNotificationService(database, { now = Date.now, enabled = p
     });
     response.json({ ok: true });
   }));
+  router.get('/sent', database.handle(async (request, response) => {
+    const journeyId = request.query.journeyId;
+    if (journeyId !== undefined && (typeof journeyId !== 'string' || !/^[a-f0-9-]{36}$/.test(journeyId))) return response.status(400).json({ message: 'Некорректная поездка' });
+    const messages = await database.prepare(`SELECT m.id, m.text, m.sent_at AS sentAt, u.name, m.recipient_id AS peerId, r.received_at AS receivedAt,
+      CASE WHEN cr.last_id >= m.id THEN 1 ELSE 0 END AS wasRead
+      FROM chat_messages m JOIN users u ON u.id = m.recipient_id
+      LEFT JOIN message_receipts r ON r.message_id = m.id
+      LEFT JOIN chat_reads cr ON cr.owner_id = m.recipient_id AND cr.peer_id = m.sender_id
+      WHERE m.sender_id = ? ${journeyId !== undefined ? "AND EXISTS (SELECT 1 FROM journeys j WHERE j.id = ? AND j.owner_id = m.sender_id AND m.client_id LIKE 'journey_' || j.id || '_%')" : ''}
+      ORDER BY m.id DESC LIMIT 50`).all(request.user.id, ...(journeyId !== undefined ? [journeyId] : []));
+    for (const message of messages) {
+      message.status = message.wasRead ? 'read' : message.receivedAt ? 'received' : 'saved';
+      const deliveries = await database.prepare(`SELECT d.status FROM push_deliveries d JOIN push_jobs j ON j.id = d.job_id
+        WHERE j.owner_id = ? AND j.reference = ? AND j.kind IN ('message', 'sos')`).all(message.peerId, String(message.id));
+      message.pushStatus = deliveries.some(d => d.status === 'provider_confirmed') ? 'provider_confirmed'
+        : deliveries.some(d => d.status === 'provider_accepted') ? 'provider_accepted'
+        : deliveries.some(d => d.status === 'pending') ? 'pending'
+        : deliveries.length ? 'failed' : 'unavailable';
+    }
+    response.set('Cache-Control', 'no-store').json({ messages });
+  }));
   router.get('/messages', database.handle(async (request, response) => {
     const after = request.query.after;
     if (after !== undefined && !/^\d{1,15}$/.test(after)) return response.status(400).json({ message: 'Некорректный курсор уведомлений' });
     const latest = (await database.prepare('SELECT MAX(id) AS id FROM chat_messages WHERE recipient_id = ?').get(request.user.id))?.id || 0;
-    if (after === undefined) return response.json({ messages: [], cursor: latest, hasMore: false });
+    if (after === undefined) {
+      const pending = await database.prepare(`SELECT m.id, m.text, m.sender_id AS senderId, m.sent_at AS sentAt FROM chat_messages m WHERE m.recipient_id = ?
+        AND NOT EXISTS (SELECT 1 FROM message_receipts r WHERE r.message_id = m.id)
+        AND m.id > COALESCE((SELECT last_id FROM chat_reads cr WHERE cr.owner_id = m.recipient_id AND cr.peer_id = m.sender_id), 0)
+        AND NOT EXISTS (SELECT 1 FROM user_blocks b WHERE (b.owner_id = m.recipient_id AND b.peer_id = m.sender_id) OR (b.owner_id = m.sender_id AND b.peer_id = m.recipient_id))
+        ORDER BY m.id DESC LIMIT 50`).all(request.user.id);
+      return response.json({ messages: [], receiptMessages: pending, cursor: latest, hasMore: false });
+    }
     const messages = await database.prepare(`SELECT m.id, m.sender_id AS senderId, u.name AS senderName, m.text, m.sent_at AS sentAt,
       CASE WHEN EXISTS (SELECT 1 FROM sos_recipients r WHERE r.message_id = m.id AND r.peer_id = m.recipient_id) THEN 'sos' ELSE 'message' END AS kind
       FROM chat_messages m JOIN users u ON u.id = m.sender_id
