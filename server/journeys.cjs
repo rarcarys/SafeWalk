@@ -149,7 +149,7 @@ async function createJourneyService(database, now = Date.now) {
     const received = await mapAsync(await database.prepare(`SELECT j.*, u.name AS owner_name, r.acknowledged_at, r.consent FROM journeys j
       JOIN journey_recipients r ON r.journey_id = j.id JOIN users u ON u.id = j.owner_id
       WHERE r.peer_id = ? ORDER BY CASE WHEN j.status = 'active' THEN 0 ELSE 1 END, j.started_at DESC LIMIT 20`).all(owner), async (row) => await serialize(row, true));
-    const unreadCount = (await database.prepare(`SELECT COUNT(*) AS count FROM chat_messages m WHERE recipient_id = ? AND id > COALESCE((SELECT last_id FROM chat_reads WHERE owner_id = ? AND peer_id = m.sender_id), 0)`).get(owner, owner)).count;
+    const unreadCount = (await database.prepare(`SELECT COUNT(*) AS count FROM chat_messages m WHERE recipient_id = ? AND id > COALESCE((SELECT last_id FROM chat_reads WHERE owner_id = ? AND peer_id = m.sender_id), 0) AND NOT EXISTS (SELECT 1 FROM hidden_chat_messages h WHERE h.owner_id = m.recipient_id AND h.message_id = m.id)`).get(owner, owner)).count;
     const sentSOS = await database.prepare(`SELECT e.owner_id AS ownerId, e.client_id AS clientId, e.created_at AS createdAt, r.peer_id AS peerId, u.name, r.acknowledged_at AS acknowledgedAt, r.route_started_at AS routeStartedAt,
       CASE WHEN COALESCE(cr.last_id, 0) >= r.message_id THEN 1 ELSE 0 END AS wasRead
       FROM sos_events e JOIN sos_recipients r ON r.owner_id = e.owner_id AND r.client_id = e.client_id

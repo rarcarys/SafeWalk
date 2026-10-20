@@ -77,6 +77,7 @@ async function createNotificationService(database, { now = Date.now, enabled = p
     const latest = (await database.prepare('SELECT MAX(id) AS id FROM chat_messages WHERE recipient_id = ?').get(request.user.id))?.id || 0;
     if (after === undefined) {
       const pending = await database.prepare(`SELECT m.id, m.text, m.sender_id AS senderId, m.sent_at AS sentAt FROM chat_messages m WHERE m.recipient_id = ?
+        AND NOT EXISTS (SELECT 1 FROM hidden_chat_messages h WHERE h.owner_id = m.recipient_id AND h.message_id = m.id)
         AND NOT EXISTS (SELECT 1 FROM message_receipts r WHERE r.message_id = m.id)
         AND m.id > COALESCE((SELECT last_id FROM chat_reads cr WHERE cr.owner_id = m.recipient_id AND cr.peer_id = m.sender_id), 0)
         AND NOT EXISTS (SELECT 1 FROM user_blocks b WHERE (b.owner_id = m.recipient_id AND b.peer_id = m.sender_id) OR (b.owner_id = m.sender_id AND b.peer_id = m.recipient_id))
@@ -87,6 +88,7 @@ async function createNotificationService(database, { now = Date.now, enabled = p
       CASE WHEN EXISTS (SELECT 1 FROM sos_recipients r WHERE r.message_id = m.id AND r.peer_id = m.recipient_id) THEN 'sos' ELSE 'message' END AS kind
       FROM chat_messages m JOIN users u ON u.id = m.sender_id
       WHERE m.recipient_id = ? AND m.id > ? AND m.id > COALESCE((SELECT last_id FROM chat_reads WHERE owner_id = m.recipient_id AND peer_id = m.sender_id), 0)
+      AND NOT EXISTS (SELECT 1 FROM hidden_chat_messages h WHERE h.owner_id = m.recipient_id AND h.message_id = m.id)
       AND NOT EXISTS (SELECT 1 FROM user_blocks b WHERE (b.owner_id = m.recipient_id AND b.peer_id = m.sender_id) OR (b.owner_id = m.sender_id AND b.peer_id = m.recipient_id))
       ORDER BY m.id LIMIT 51`).all(request.user.id, Number(after));
     const page = messages.slice(0, 50);
@@ -127,6 +129,10 @@ async function createNotificationService(database, { now = Date.now, enabled = p
       for (const job of jobs) {
         if (closed) break;
         const chatMessage = ['message', 'sos'].includes(job.kind) ? await database.prepare('SELECT sender_id, recipient_id FROM chat_messages WHERE id = ?').get(Number(job.reference)) : null;
+        if (chatMessage && await database.prepare('SELECT 1 FROM hidden_chat_messages WHERE owner_id = ? AND message_id = ?').get(chatMessage.recipient_id, Number(job.reference))) {
+          await database.prepare("UPDATE push_deliveries SET status = 'expired' WHERE job_id = ? AND token = ?").run(job.job_id, job.token);
+          continue;
+        }
         if (job.kind === 'message' && job.status === 'pending' && (!chatMessage || (await database.prepare('SELECT last_id FROM chat_reads WHERE owner_id = ? AND peer_id = ?').get(chatMessage.recipient_id, chatMessage.sender_id))?.last_id >= Number(job.reference) || chatMessage && await database.prepare('SELECT 1 FROM user_blocks WHERE (owner_id = ? AND peer_id = ?) OR (owner_id = ? AND peer_id = ?)').get(chatMessage.sender_id, chatMessage.recipient_id, chatMessage.recipient_id, chatMessage.sender_id))) {
           await database.prepare("UPDATE push_deliveries SET status = 'expired' WHERE job_id = ? AND token = ?").run(job.job_id, job.token);
           continue;

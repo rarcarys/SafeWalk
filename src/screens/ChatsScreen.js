@@ -26,6 +26,7 @@ function Conversation({
   const chat = useConversation(peer.id, outbox);
   const [draft, setDraft] = useState('');
   const [quickMessages, setQuickMessages] = useState(false);
+  const [clearConfirm, setClearConfirm] = useState(false);
   const [reactionMessage, setReactionMessage] = useState(null);
   const reactingMessage = chat.messages.find(message => message.id === reactionMessage);
   const messageViews = useRef(new Map());
@@ -82,6 +83,7 @@ function Conversation({
           <Text style={s.personName}>{peer.name}</Text>
           {chat.presence ? <ContactPresence presence={chat.presence} /> : <Text style={s.rowSubtitle}>{t("Личная переписка")}</Text>}
         </View>
+        <IconButton icon="trash-2" label={t('Очистить чат')} disabled={chat.loading || chat.sending || chat.clearing} onPress={() => setClearConfirm(true)} />
       </View>
       {!!chat.error && <View style={s.chatError}>
           <Text accessibilityRole="alert" style={[s.mapError, s.flex, {
@@ -143,6 +145,12 @@ function Conversation({
         {!!chat.error && <Text accessibilityRole="alert" style={s.mapError}>{t(chat.error)}</Text>}
         </View></View>
       </Modal>
+      <ModalSheet visible={clearConfirm} title={t('Очистить чат?')} onClose={() => { if (!chat.clearing) setClearConfirm(false); }}>
+        <Text style={s.modalDescription}>{t('Сообщения удалятся только у вас. Тревоги за последние 24 часа останутся в чате.')}</Text>
+        <ActionButton title={t('Очистить чат')} icon="trash-2" danger busy={chat.clearing} onPress={async () => { if (await chat.clear()) setClearConfirm(false); }} />
+        <ActionButton title={t('Оставить')} secondary disabled={chat.clearing} onPress={() => setClearConfirm(false)} />
+        {!!chat.error && <Text role="alert" style={s.mapError}>{t(chat.error)}</Text>}
+      </ModalSheet>
       <ModalSheet visible={quickMessages} title={t('Быстрые сообщения')} onClose={() => { if (!chat.sending) setQuickMessages(false); }}>
         {['Позвони мне, пожалуйста.', 'Я задерживаюсь. Скоро напишу.', 'Встреть меня, пожалуйста.'].map(text => <Pressable key={text} accessibilityRole="button" accessibilityLabel={t(text)} disabled={chat.sending || chat.loading} onPress={async () => { if (await chat.send(t(text))) setQuickMessages(false); }} style={s.menuAction}><Icon name="send" size={18} color={colors.blue} /><Text style={[s.rowTitle, s.flex]}>{t(text)}</Text></Pressable>)}
         {!!chat.error && <Text role="alert" style={s.mapError}>{t(chat.error)}</Text>}

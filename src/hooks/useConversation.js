@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { AppState } from 'react-native';
-import { loadMessages, sendMessage, markChatRead, reactToMessage } from '../services/circle';
+import { loadMessages, sendMessage, markChatRead, reactToMessage, clearChat } from '../services/circle';
 import { subscribeLive } from '../services/live';
 
 const merge = (current, incoming) => [...new Map([...current, ...incoming].map(message => [message.id, message])).values()].sort((a, b) => a.id - b.id);
@@ -21,12 +21,15 @@ export default function useConversation(peerId, outbox) {
   const oldest = useRef(null);
   const reactionLock = useRef(false);
   const [reacting, setReacting] = useState(false);
+  const [clearing, setClearing] = useState(false);
+  const clearLock = useRef(false);
   useEffect(() => {
     const version = ++generation.current;
     let cancelled = false;
     let polling = false;
     let initialized = false;
     let cursor = 0;
+    let visibilityVersion = null;
     setMessages([]);
     setPresence(null);
     oldest.current = null;
@@ -42,6 +45,8 @@ export default function useConversation(peerId, outbox) {
         do {
           const result = await loadMessages(peerId, initialized ? `?after=${cursor}${oldest.current ? `&reactionFrom=${oldest.current}` : ''}` : '');
           if (cancelled) return;
+          if (initialized && result.visibilityVersion !== visibilityVersion) { setRetry(value => value + 1); return; }
+          visibilityVersion = result.visibilityVersion;
           setPresence(result.presence || null);
           if (!oldest.current && result.messages.length) oldest.current = result.messages[0].id;
           setMessages(current => merge(current, result.messages).map(message => ({ ...message, read: message.id <= (result.peerReadId || 0), reactions: (result.reactions || []).filter(reaction => reaction.messageId === message.id) })));
@@ -122,5 +127,12 @@ export default function useConversation(peerId, outbox) {
     } catch (failure) { if (generation.current === version) setError(failure.message); return false; }
     finally { reactionLock.current = false; setReacting(false); }
   };
-  return { messages, presence, loading, sending, loadingOlder, hasOlder, error, send, loadOlder, react, reacting, reconnect: useCallback(() => setRetry(value => value + 1), []) };
+  const clear = async () => {
+    if (clearLock.current || sending || loading) return false;
+    clearLock.current = true; setClearing(true);
+    try { await clearChat(peerId); setMessages([]); setRetry(value => value + 1); return true; }
+    catch (failure) { setError(failure.message); return false; }
+    finally { clearLock.current = false; setClearing(false); }
+  };
+  return { messages, presence, loading, sending, loadingOlder, hasOlder, error, send, loadOlder, react, reacting, clearing, clear, reconnect: useCallback(() => setRetry(value => value + 1), []) };
 }

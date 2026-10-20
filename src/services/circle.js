@@ -12,6 +12,7 @@ export const linkContact = (id, email) =>
 export const saveSelection = (primaryId, backupIds) =>
   request('circle/selection', { method: 'PUT', body: { primaryId, backupIds } });
 export const loadChats = () => request('circle/chats');
+export const clearChat = peerId => request(`circle/chats/${encodeURIComponent(peerId)}/messages`, { method: 'DELETE', body: {} });
 export const reactToMessage = (peerId, messageId, emoji) => request(`circle/chats/${encodeURIComponent(peerId)}/messages/${messageId}/reaction`, { method: 'PUT', body: { emoji } });
 export const loadMessages = (peerId, query = '') =>
   request(`circle/chats/${encodeURIComponent(peerId)}/messages${query}`);

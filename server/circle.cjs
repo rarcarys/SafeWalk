@@ -48,6 +48,16 @@ async function createCircleRouter(database, now = Date.now) {
     );
   `);
   const router = express.Router();
+  await database.exec(`CREATE TABLE IF NOT EXISTS hidden_chat_messages (
+    owner_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    message_id INTEGER NOT NULL REFERENCES chat_messages(id) ON DELETE CASCADE,
+    PRIMARY KEY(owner_id, message_id)
+  );
+  CREATE TABLE IF NOT EXISTS chat_clear_versions (
+    owner_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    peer_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    version INTEGER NOT NULL DEFAULT 1, PRIMARY KEY(owner_id, peer_id)
+  )`);
   router.use('/links', await require('./contact-links.cjs').createContactLinks(database, now));
   await database.exec(`CREATE TABLE IF NOT EXISTS message_reactions (
     message_id INTEGER NOT NULL REFERENCES chat_messages(id) ON DELETE CASCADE,
@@ -198,10 +208,10 @@ async function createCircleRouter(database, now = Date.now) {
       UNION SELECT recipient_id FROM chat_messages WHERE sender_id = ?
     )`).all(owner, owner, owner);
     const latest = database.prepare(`SELECT id, sender_id AS senderId, text, sent_at AS sentAt FROM chat_messages
-      WHERE (sender_id = ? AND recipient_id = ?) OR (sender_id = ? AND recipient_id = ?) ORDER BY id DESC LIMIT 1`);
-    const unread = database.prepare('SELECT COUNT(*) AS count FROM chat_messages WHERE recipient_id = ? AND sender_id = ? AND id > COALESCE((SELECT last_id FROM chat_reads WHERE owner_id = ? AND peer_id = ?), 0)');
+      WHERE ((sender_id = ? AND recipient_id = ?) OR (sender_id = ? AND recipient_id = ?)) AND NOT EXISTS (SELECT 1 FROM hidden_chat_messages h WHERE h.owner_id = ? AND h.message_id = chat_messages.id) ORDER BY id DESC LIMIT 1`);
+    const unread = database.prepare('SELECT COUNT(*) AS count FROM chat_messages WHERE recipient_id = ? AND sender_id = ? AND id > COALESCE((SELECT last_id FROM chat_reads WHERE owner_id = ? AND peer_id = ?), 0) AND NOT EXISTS (SELECT 1 FROM hidden_chat_messages h WHERE h.owner_id = chat_messages.recipient_id AND h.message_id = chat_messages.id)');
     const presences = await contactPresences(database, owner, peers.map(peer => peer.id), now());
-    response.json({ chats: (await mapAsync(peers, async (peer) => ({ ...peer, presence: presences.get(peer.id) || null, unreadCount: (await unread.get(owner, peer.id, owner, peer.id)).count, lastMessage: (await latest.get(owner, peer.id, peer.id, owner)) || null }))).
+    response.json({ chats: (await mapAsync(peers, async (peer) => ({ ...peer, presence: presences.get(peer.id) || null, unreadCount: (await unread.get(owner, peer.id, owner, peer.id)).count, lastMessage: (await latest.get(owner, peer.id, peer.id, owner, owner)) || null }))).
       sort((a, b) => (b.lastMessage?.id || 0) - (a.lastMessage?.id || 0) || a.name.localeCompare(b.name, 'ru')) });
   });
   async function canChat(owner, peer) {
@@ -209,6 +219,21 @@ async function createCircleRouter(database, now = Date.now) {
     return owner !== peer && !!(await database.prepare(`SELECT 1 FROM circle_contacts WHERE (owner_id = ? AND peer_id = ?) OR (owner_id = ? AND peer_id = ?)
       UNION SELECT 1 FROM chat_messages WHERE (sender_id = ? AND recipient_id = ?) OR (sender_id = ? AND recipient_id = ?) LIMIT 1`).get(owner, peer, peer, owner, owner, peer, peer, owner));
   }
+  router.delete('/chats/:peer/messages', database.handle(async (request, response) => {
+    const owner = request.user.id, peer = request.params.peer;
+    if (!(await canChat(owner, peer))) return response.status(403).json({ message: 'Чат недоступен' });
+    let cleared = 0;
+    await database.transaction(async () => {
+      const result = await database.prepare(`INSERT OR IGNORE INTO hidden_chat_messages(owner_id, message_id)
+        SELECT ?, m.id FROM chat_messages m WHERE ((m.sender_id = ? AND m.recipient_id = ?) OR (m.sender_id = ? AND m.recipient_id = ?))
+        AND NOT (m.sent_at >= ? AND (m.text LIKE 'SOS %' OR m.client_id LIKE 'journey_%_delay_%' OR m.client_id LIKE 'journey_%_battery_%' OR m.client_id LIKE 'sos_ack_%' OR m.client_id LIKE 'sos_route_%' OR
+          EXISTS (SELECT 1 FROM sos_recipients r WHERE r.message_id = m.id)))`).run(owner, owner, peer, peer, owner, now() - 86400000);
+      cleared = result.changes;
+      await database.prepare(`INSERT INTO chat_clear_versions(owner_id, peer_id) VALUES (?, ?)
+        ON CONFLICT(owner_id, peer_id) DO UPDATE SET version = chat_clear_versions.version + 1`).run(owner, peer);
+    });
+    response.json({ ok: true, cleared });
+  }));
   router.put('/chats/:peer/read', database.handle(async (request, response) => {
     if (!(await canChat(request.user.id, request.params.peer))) return response.status(403).json({ message: 'Чат недоступен' });
     const id = request.body?.lastId;
@@ -226,18 +251,20 @@ async function createCircleRouter(database, now = Date.now) {
     const ascending = after !== undefined;
     const rows = await database.prepare(`SELECT id, sender_id AS senderId, text, sent_at AS sentAt FROM chat_messages
       WHERE ((sender_id = ? AND recipient_id = ?) OR (sender_id = ? AND recipient_id = ?))
+      AND NOT EXISTS (SELECT 1 FROM hidden_chat_messages h WHERE h.owner_id = ? AND h.message_id = chat_messages.id)
       ${before !== undefined ? 'AND id < ?' : ascending ? 'AND id > ?' : ''} ORDER BY id ${ascending ? 'ASC' : 'DESC'} LIMIT 101`).
-    all(request.user.id, request.params.peer, request.params.peer, request.user.id, ...((before ?? after) !== undefined ? [Number(before ?? after)] : []));
+    all(request.user.id, request.params.peer, request.params.peer, request.user.id, request.user.id, ...((before ?? after) !== undefined ? [Number(before ?? after)] : []));
     const hasMore = rows.length > 100;
     const messages = rows.slice(0, 100);
     const reactionFrom = request.query.reactionFrom;
     if (reactionFrom !== undefined && !/^[1-9]\d{0,14}$/.test(reactionFrom)) return response.status(400).json({ message: 'Некорректный курсор реакций' });
     const from = reactionFrom ? Number(reactionFrom) : Math.min(...messages.map(item => item.id), Number.MAX_SAFE_INTEGER);
     const reactions = await database.prepare(`SELECT r.message_id AS messageId, r.owner_id AS ownerId, r.emoji FROM message_reactions r JOIN chat_messages m ON m.id = r.message_id
-      WHERE m.id >= ? AND ((m.sender_id = ? AND m.recipient_id = ?) OR (m.sender_id = ? AND m.recipient_id = ?))`).all(from, request.user.id, request.params.peer, request.params.peer, request.user.id);
+      WHERE m.id >= ? AND ((m.sender_id = ? AND m.recipient_id = ?) OR (m.sender_id = ? AND m.recipient_id = ?)) AND NOT EXISTS (SELECT 1 FROM hidden_chat_messages h WHERE h.owner_id = ? AND h.message_id = m.id)`).all(from, request.user.id, request.params.peer, request.params.peer, request.user.id, request.user.id);
     const peerReadId = (await database.prepare('SELECT last_id FROM chat_reads WHERE owner_id = ? AND peer_id = ?').get(request.params.peer, request.user.id))?.last_id || 0;
     const presences = await contactPresences(database, request.user.id, [request.params.peer], now());
-    response.json({ messages: ascending ? messages : messages.reverse(), hasMore, peerReadId, reactions, presence: presences.get(request.params.peer) || null });
+    const visibilityVersion = (await database.prepare('SELECT version FROM chat_clear_versions WHERE owner_id = ? AND peer_id = ?').get(request.user.id, request.params.peer))?.version || 0;
+    response.json({ messages: ascending ? messages : messages.reverse(), hasMore, peerReadId, reactions, presence: presences.get(request.params.peer) || null, visibilityVersion });
   });
   router.put('/chats/:peer/messages/:message/reaction', database.handle(async (request, response) => {
     if (!(await canChat(request.user.id, request.params.peer))) return response.status(403).json({ message: 'Чат недоступен' });

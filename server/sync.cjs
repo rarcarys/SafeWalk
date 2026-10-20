@@ -14,6 +14,7 @@ async function createSyncRouter(database) {
   }
   await trigger('users', 'UPDATE', bump('NEW.id') + `INSERT INTO sync_revisions(owner_id, revision) SELECT DISTINCT owner_id, 1 FROM circle_contacts WHERE peer_id = NEW.id ON CONFLICT(owner_id) DO UPDATE SET revision = revision + 1;` + `INSERT INTO sync_revisions(owner_id, revision) SELECT DISTINCT recipient_id, 1 FROM contact_requests WHERE sender_id = NEW.id ON CONFLICT(owner_id) DO UPDATE SET revision = revision + 1;`);
   await trigger('chat_reads', 'INSERT', bump('NEW.peer_id'));
+  for (const action of ['INSERT', 'UPDATE']) await trigger('chat_clear_versions', action, bump('NEW.owner_id'));
   for (const action of ['INSERT', 'UPDATE', 'DELETE']) {
     const row = action === 'DELETE' ? 'OLD' : 'NEW';
     await trigger('sos_recipients', action, bump(`${row}.owner_id`) + bump(`${row}.peer_id`));
