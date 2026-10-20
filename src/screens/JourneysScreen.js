@@ -1,108 +1,72 @@
-import { useSettings } from '../context/SettingsContext';
 import React, { useState } from 'react';
 import { ActivityIndicator, Pressable, Text, View } from 'react-native';
+import { useSettings } from '../context/SettingsContext';
+import { request } from '../services/api';
 import ActionButton from '../components/ui/ActionButton';
 import Icon from '../components/ui/Icon';
 import IconButton from '../components/ui/IconButton';
-import { formatDuration } from '../services/duration.cjs';
-import { transportLabel } from '../data/transports';
-const time = (value, locale) => new Date(value).toLocaleTimeString(locale, {
-  hour: '2-digit',
-  minute: '2-digit'
-});
-const date = (value, locale) => new Date(value).toLocaleDateString(locale, {
-  day: 'numeric',
-  month: 'long'
-});
-export default function JourneysScreen({
-  account,
-  trip,
-  onOpenMap,
-  onCancel,
-  onRepeat,
-  onSelectReceived
-}) {
-  const {
-    appStyles: s,
-    colors,
-    t,
-    locale
-  } = useSettings();
-  const [queueError, setQueueError] = useState('');
-  return <View style={s.listPage}>
-    <View style={s.cardHeading}><Text style={[s.pageTitle, s.flex]}>{t("Маршруты")}</Text><IconButton icon="more-horizontal" label={t('Ещё: безопасность')} onPress={trip.onOpenSafety} /></View>
-    <Text style={s.pageDescription}>{t("Текущая поездка, ваш круг и история")}</Text>
-    {!!(queueError || account.outbox.error) && <Text role="alert" style={s.mapError}>{t(queueError || account.outbox.error)}</Text>}
-    {account.outbox.items.map(item => <View style={s.journeyCard} key={item.id}>
-      <Text style={s.rowTitle}>{t(item.label)}</Text>
-      <Text style={s.rowSubtitle}>{t(item.status === 'pending' ? 'Ожидает отправки. Сервер ещё не подтвердил действие.' : item.error)}</Text>
-      <ActionButton title={t('Убрать из очереди')} secondary onPress={() => account.outbox.discard(item.id).catch(error => setQueueError(error.message))} />
-    </View>)}
-    {(account.receivedSOS || []).map(item => <View key={`${item.ownerId}:${item.clientId}`} style={s.journeyCard}>
-      <Text style={s.rowTitle}>SOS · {item.name}</Text><Text style={s.rowSubtitle}>{new Date(item.createdAt).toLocaleString(locale)}</Text>
-      <ActionButton title={t(item.acknowledgedAt ? 'Вы подтвердили получение' : 'Получил SOS, связываюсь')} disabled={!!item.acknowledgedAt || account.busy} onPress={() => account.acknowledgeSOS(item.ownerId, item.clientId).catch(error => setQueueError(error.message))} />
-    </View>)}
-    {(account.sentSOS || []).map(item => <View key={`${item.clientId}:${item.peerId}`} style={s.personRow}>
-      <View style={s.flex}><Text style={s.rowTitle}>SOS · {item.name}</Text><Text style={s.rowSubtitle}>{t(item.acknowledgedAt ? 'Контакт подтвердил получение и связывается с вами' : item.wasRead ? 'Сообщение прочитано' : 'Сервер принял тревогу. Подтверждения контакта пока нет.')}</Text></View>
-    </View>)}
+import ModalSheet from '../components/ui/ModalSheet';
+import ReceivedSOSCard from '../components/ReceivedSOSCard';
+
+export default function JourneysScreen({ account, trip, onOpenMap, onCancel, onRepeat, onSelectReceived, onOpenSOSDetails }) {
+  const { appStyles: s, colors, t, locale } = useSettings();
+  const [historyOpen, setHistoryOpen] = useState(false), [actions, setActions] = useState(false);
+  const [removing, setRemoving] = useState(null), [busy, setBusy] = useState(false), [error, setError] = useState('');
+  const stamp = value => new Date(value).toLocaleString(locale, { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' });
+  const clock = value => new Date(value).toLocaleTimeString(locale, { hour: '2-digit', minute: '2-digit' });
+  const active = account.active;
+  const activePeers = account.received.filter(item => ['active', 'pending'].includes(item.status));
+  const sentGroups = [...new Map((account.sentSOS || []).map(item => [item.clientId, { ...item, peers: [] }])).values()];
+  for (const group of sentGroups) group.peers = account.sentSOS.filter(item => item.clientId === group.clientId);
+  const history = [
+    ...account.history.map(item => ({ key: item.id, kind: 'journey', id: item.id, title: item.target.name, time: item.endedAt || item.startedAt, subtitle: t(item.status === 'arrived' ? 'Прибытие подтверждено' : 'Поездка отменена'), onOpen: () => onRepeat(item.target) })),
+    ...account.received.filter(item => !['active', 'pending'].includes(item.status)).map(item => ({ key: item.id, kind: 'journey', id: item.id, title: item.ownerName, time: item.endedAt || item.startedAt, subtitle: item.target.name, onOpen: () => onSelectReceived(item.id) })),
+    ...(account.receivedSOS || []).filter(item => item.acknowledgedAt).map(item => ({ key: `${item.ownerId}:${item.clientId}`, kind: 'sos', id: item.clientId, ownerId: item.ownerId, title: `SOS · ${item.name}`, time: item.createdAt, subtitle: t(item.routeStartedAt ? 'Маршрут построен · направляетесь на помощь' : 'Вы подтвердили получение'), onOpen: () => onOpenSOSDetails(item) })),
+    ...sentGroups.filter(group => group.peers.every(item => item.acknowledgedAt)).map(group => ({ key: `sent:${group.clientId}`, kind: 'sos', id: group.clientId, ownerId: group.peers[0]?.ownerId, title: t('Ваш SOS'), time: group.createdAt, subtitle: group.peers.map(item => item.name).join(', ') })),
+  ].sort((a, b) => b.time - a.time);
+  const remove = async () => {
+    if (busy) return;
+    setBusy(true); setError('');
+    try { await request(removing.all ? 'journeys/entries/history' : 'journeys/entries', { method: 'DELETE', body: removing.all ? {} : { kind: removing.kind, id: removing.id, ...(removing.ownerId ? { ownerId: removing.ownerId } : {}) } }); await account.refresh(); if (removing.all) setHistoryOpen(true); setRemoving(null); }
+    catch (failure) { setError(failure.message); }
+    finally { setBusy(false); }
+  };
+  const menuAction = (icon, label, action) => <Pressable key={label} accessibilityRole="button" accessibilityLabel={t(label)} onPress={() => { setActions(false); action(); }} style={s.menuAction}><Icon name={icon} size={20} color={colors.ink} /><Text style={s.rowTitle}>{t(label)}</Text></Pressable>;
+  return <View style={[s.listPage, s.routesPage]}>
+    <View style={s.cardHeading}><View style={s.flex}><Text style={s.pageTitle}>{t('Маршруты')}</Text><Text style={s.routesPageCaption}>{t('Поездки и сопровождение')}</Text></View><IconButton icon="more-horizontal" label={t('Ещё: безопасность')} onPress={trip.onOpenSafety} /></View>
+    {!!(account.receivedSOS || []).filter(item => !item.acknowledgedAt).length && <View>{(account.receivedSOS || []).filter(item => !item.acknowledgedAt).map(item => <ReceivedSOSCard key={`${item.ownerId}:${item.clientId}`} item={item} onAcknowledged={account.refresh} onOpenDetails={onOpenSOSDetails} />)}</View>}
     {account.loading && <ActivityIndicator color={colors.blue} />}
-    {!!account.error && <><Text role="alert" style={s.mapError}>{t(account.error)}</Text><ActionButton title={t("Повторить загрузку")} secondary onPress={account.refresh} /></>}
-    {account.active ? <View style={s.journeyCard}>
-      <View style={s.cardHeading}><Icon name="navigation" size={18} color={colors.blue} /><Text style={s.groupLabel}>{t("МОЯ ПОЕЗДКА")}</Text></View>
-      <Text style={s.cardTitle}>{account.active.target.name}</Text>
-      {!!trip.deviceStatus && <Text style={s.rowSubtitle}>{t(trip.deviceStatus)}</Text>}
-      {account.active.status === 'pending' && <Text style={s.mapError}>{t('Ожидаем основного сопровождающего. Прогулка ещё не началась.')}</Text>}
-      {account.active.recipients.map(person => <Text key={person.peerId} style={s.rowSubtitle}>{person.name}: {t(({ pending: 'ожидает ответа', accepted: 'сопровождение принято', declined: 'сопровождение отклонено' })[person.consent])}</Text>)}
-      {account.active.status === 'active' && <Text style={s.rowSubtitle}>{"" + t("Прибытие в") + " "}{time(account.active.expectedAt, locale)} · {trip.remainingMinutes > 0 ? t("{value0} осталось", {
-          value0: formatDuration(trip.remainingMinutes, t)
-        }) : t("Подтвердите прибытие")}</Text>}
-      {!account.active.recipients.length && <Text style={s.rowSubtitle}>{t('Без сопровождения')}</Text>}
-      <ActionButton title={t("Открыть мой маршрут")} icon="map" onPress={onOpenMap} />
-      <ActionButton title={t("Я на месте")} icon="check" secondary busy={trip.busy} disabled={account.active.status === 'pending'} onPress={trip.onArrive} />
-      <Pressable accessibilityRole="button" accessibilityLabel={t("Отменить поездку")} onPress={onCancel} style={s.textAction} disabled={trip.busy}><Text style={s.dangerText}>{t("Отменить поездку")}</Text></Pressable>
-    </View> : !account.loading && <View style={s.emptyCard}>
-      <Icon name="map" size={30} color={colors.blue} />
-      <Text style={s.cardTitle}>{t("Куда отправимся?")}</Text>
-      <Text style={s.rowSubtitle}>{t("Постройте маршрут, укажите время прибытия и выберите сопровождение.")}</Text>
-      <ActionButton title={t("Новый маршрут")} icon="plus" disabled={!!account.error} onPress={onOpenMap} />
-    </View>}
-    {!!account.received.length && <>
-      <Text style={[s.groupLabel, {
-        marginTop: 28
-      }]}>{t("ПОЕЗДКИ МОЕГО КРУГА")}</Text>
-      {account.received.map(item => <Pressable key={item.id} accessibilityRole="button" accessibilityLabel={t("Поездка: {value0}", {
-        value0: item.ownerName
-      })} onPress={() => onSelectReceived(item.id)} style={s.journeyCard}>
-        <View style={s.cardHeading}><Icon name={item.status === 'active' ? 'navigation' : item.status === 'arrived' ? 'check-circle' : 'x-circle'} size={18} color={item.status === 'arrived' ? colors.success : colors.blue} /><Text style={s.personName}>{item.ownerName}</Text></View>
-        <Text style={s.rowTitle}>{item.target.name}</Text>
-        {item.consent === 'pending' && <Text style={s.blueText}>{t('Приглашение сопровождать')}</Text>}
-        {item.consent === 'declined' && <Text style={s.rowSubtitle}>{t('Сопровождение отклонено')}</Text>}
-        <Text style={s.rowSubtitle}>{item.status === 'pending' ? t('Ожидаем сопровождающего') : item.status === 'active' ? t("В пути · прибытие в {value0}", {
-            value0: time(item.expectedAt, locale)
-          }) : item.status === 'arrived' ? t("Прибытие подтверждено") : t("Поездка отменена")}</Text>
-        {item.status === 'active' && <Text style={s.rowSubtitle}>{item.sharing ? item.position ? t("Геопозиция обновлена в {value0}", {
-            value0: time(item.position.updatedAt, locale)
-          }) : t("Ожидаем геопозицию") : t("Геопозиция не передаётся")}</Text>}
-        <View style={s.cardHeading}><Text style={s.blueText}>{t("Открыть поездку")}</Text><Icon name="arrow-right" size={15} color={colors.blue} /></View>
-      </Pressable>)}
-    </>}
-    <Text style={[s.groupLabel, {
-      marginTop: 28
-    }]}>{t("ИСТОРИЯ")}</Text>
-    {!account.history.length && <Text style={s.listFootnote}>{t("Завершённые поездки появятся здесь.")}</Text>}
-    {account.history.map(item => <View key={item.id} style={s.personRow}>
-      <Icon name={item.status === 'arrived' ? 'check-circle' : 'x-circle'} size={22} color={item.status === 'arrived' ? colors.success : colors.muted} />
-      <View style={s.flex}>
-        <Text style={s.personName}>{item.target.name}</Text>
-        <Text style={s.rowSubtitle}>{date(item.startedAt, locale)} · {time(item.startedAt, locale)} · {item.status === 'arrived' ? t("Прибытие подтверждено") : t("Отменено")}</Text>
-        <Text style={s.rowSubtitle}>{(item.route.distance / 1000).toLocaleString(locale, {
-            maximumFractionDigits: 1
-          })}{" " + t("км ·") + " "}{t(transportLabel(item.transport))}</Text>
-      </View>
-      {!account.active && <Pressable accessibilityRole="button" accessibilityLabel={t("Повторить маршрут: {value0}", {
-        value0: item.target.name
-      })} onPress={() => onRepeat(item.target)} style={s.iconButton}><Icon name="rotate-ccw" size={18} color={colors.blue} /></Pressable>}
-    </View>)}
-    <Text style={s.listFootnote}>{t("Поездки и настройки сохраняются в вашем аккаунте.")}</Text>
+    {!!account.error && <><Text role="alert" style={s.mapError}>{t(account.error)}</Text><ActionButton title={t('Повторить загрузку')} secondary onPress={account.refresh} /></>}
+    <View style={s.routesSection}>
+    <Text style={s.routesSectionTitle}>{t('Моя поездка')}</Text>
+    {active ? <View style={s.routesMainCard}>
+      <View style={s.cardHeading}><View style={s.routesStatePill}><View style={s.routesStateDot} /><Text style={s.routesStateText}>{t('В пути')}</Text></View><View style={s.flex} /><IconButton icon="more-horizontal" label={t('Ещё')} onPress={() => setActions(true)} /></View>
+      <Text style={s.routesDestination}>{active.target.name}</Text>
+      <View style={s.routesArrival}><Icon name="clock" size={20} color={colors.blue} /><View><Text style={s.routesArrivalLabel}>{t('Прибытие')}</Text><Text style={s.routesArrivalTime}>{clock(active.expectedAt)}</Text></View></View>
+      <ActionButton title={t('Я на месте')} icon="check" busy={trip.busy} onPress={trip.onArrive} />
+    </View> : !account.loading && <View style={s.routesMainCard}><View style={s.cardHeading}><View style={s.routesIconTile}><Icon name="navigation" size={24} color={colors.blue} /></View><View style={s.flex}><Text style={s.routesEmptyTitle}>{t('Куда отправимся?')}</Text><Text style={s.routesPageCaption}>{t('Выберите место и начните поездку')}</Text></View></View><ActionButton title={t('Новый маршрут')} icon="plus" disabled={!!account.error} onPress={onOpenMap} /></View>}
+    </View>
+    {activePeers.length > 0 && <View style={s.routesSection}><View style={s.cardHeading}><Text style={[s.routesSectionTitle, s.flex]}>{t('Близкие в пути')}</Text><Text style={s.routesCount}>{activePeers.length}</Text></View>{activePeers.map(item => <Pressable key={item.id} accessibilityRole="button" accessibilityLabel={t('Поездка: {value0}', { value0: item.ownerName })} onPress={() => onSelectReceived(item.id)} style={s.routesPeerCard}><View style={s.routesIconTile}><Icon name="navigation" size={20} color={colors.blue} /></View><View style={s.flex}><Text style={s.rowTitle}>{item.ownerName}</Text><Text numberOfLines={1} style={s.routesPageCaption}>{item.target.name}</Text></View><View style={s.routesPeerTime}><Text style={s.routesPeerClock}>{clock(item.expectedAt)}</Text><Icon name="chevron-right" size={16} color={colors.muted} /></View></Pressable>)}</View>}
+    {!!account.outbox.items.length && <View style={s.journeyCard}><Text style={s.rowTitle}>{t('Ожидают отправки')}: {account.outbox.items.length}</Text>{account.outbox.items.map(item => <View style={s.cardHeading} key={item.id}><Text style={[s.rowSubtitle, s.flex]}>{t(item.label)}</Text><IconButton icon="x" label={t('Убрать из очереди')} onPress={() => account.outbox.discard(item.id).catch(failure => setError(failure.message))} /></View>)}</View>}
+    <View style={s.routesHistoryCard}>
+    <View style={s.routesHistoryHeader}>
+      <Pressable accessibilityRole="button" accessibilityLabel={t('История')} accessibilityState={{ expanded: historyOpen }} onPress={() => setHistoryOpen(value => !value)} style={[s.cardHeading, s.flex, { minHeight: 48 }]}><Icon name="clock" size={19} color={colors.muted} /><Text style={s.routesSectionTitle}>{t('История')}</Text><Text style={s.routesCount}>{history.length}</Text><View style={s.flex} /><Icon name={historyOpen ? 'chevron-up' : 'chevron-down'} size={18} color={colors.muted} /></Pressable>
+      {!!history.length && <Pressable accessibilityRole="button" accessibilityLabel={t('Очистить историю')} disabled={busy} onPress={() => { setError(''); setRemoving({ all: true }); }} style={s.routesClearAction}><Text style={s.routesClearText}>{t('Очистить')}</Text></Pressable>}
+    </View>
+    {historyOpen && <>{!history.length && <View style={s.routesEmptyHistory}><Text style={s.rowSubtitle}>{t('История пуста')}</Text></View>}{history.map(item => <View key={item.key} style={s.routesHistoryRow}><View style={[s.routesHistoryIcon, item.kind === 'sos' && { backgroundColor: colors.canvas }]}><Icon name={item.kind === 'sos' ? 'shield' : 'map-pin'} size={19} color={colors.muted} /></View><Pressable accessibilityRole="button" accessibilityLabel={item.title} disabled={!item.onOpen} onPress={item.onOpen} style={s.flex}><Text numberOfLines={1} style={s.rowTitle}>{item.title}</Text><Text numberOfLines={1} style={s.routesPageCaption}>{item.subtitle}</Text><Text style={s.routesHistoryDate}>{stamp(item.time)}</Text></Pressable><IconButton icon="trash-2" label={t('Удалить запись: {name}', { name: item.title })} onPress={() => { setError(''); setRemoving(item); }} /></View>)}</>}
+    </View>
+    {!!error && !removing && <Text role="alert" style={s.mapError}>{t(error)}</Text>}
+    <ModalSheet visible={actions} title={t('Действия с поездкой')} onClose={() => setActions(false)}>
+      {menuAction('map', 'Открыть мой маршрут', onOpenMap)}
+      {menuAction('share-2', 'Ссылка на поездку', trip.onShareJourney)}
+      {menuAction('bell', 'Статус уведомлений', trip.onNotificationStatus)}
+      {menuAction('x-circle', 'Отменить поездку', onCancel)}
+    </ModalSheet>
+    <ModalSheet visible={!!removing} title={t(removing?.all ? 'Очистить всю историю?' : 'Удалить запись?')} onClose={() => { if (!busy) setRemoving(null); }}>
+      {!!removing?.title && <Text style={s.rowTitle}>{removing.title}</Text>}<Text style={s.modalDescription}>{t(removing?.all ? 'Завершённые поездки и обработанные SOS исчезнут из вашего списка.' : 'Запись исчезнет из вашего списка. У других участников она останется.')}</Text>
+      {!!error && <Text role="alert" style={s.mapError}>{t(error)}</Text>}
+      <ActionButton title={t(removing?.all ? 'Очистить историю' : 'Удалить запись')} icon="trash-2" danger busy={busy} onPress={remove} />
+      <ActionButton title={t('Оставить')} secondary disabled={busy} onPress={() => setRemoving(null)} />
+    </ModalSheet>
   </View>;
 }

@@ -71,6 +71,42 @@ async function createJourneyService(database, now = Date.now) {
     await database.prepare("UPDATE journeys SET status = 'active', started_at = ?, expected_at = ? WHERE id = ?").run(now(), now() + JSON.parse(row.details).minutes * 60000, row.id);
   }
   const router = express.Router();
+  await database.exec(`CREATE TABLE IF NOT EXISTS hidden_journey_entries (
+    owner_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    kind TEXT NOT NULL, reference TEXT NOT NULL, PRIMARY KEY(owner_id, kind, reference)
+  )`);
+  router.delete('/entries', database.handle(async (request, response) => {
+    const { kind, id, ownerId } = request.body || {};
+    const owner = request.user.id;
+    if (kind === 'journey' && typeof id === 'string' && /^[a-f0-9-]{36}$/.test(id)) {
+      const row = await database.prepare(`SELECT j.status FROM journeys j WHERE j.id = ? AND (j.owner_id = ? OR EXISTS (SELECT 1 FROM journey_recipients r WHERE r.journey_id = j.id AND r.peer_id = ?))`).get(id, owner, owner);
+      if (!row) return response.status(404).json({ message: 'Запись не найдена' });
+      if (['active', 'pending'].includes(row.status)) return response.status(409).json({ message: 'Сначала завершите поездку' });
+      await database.prepare('INSERT OR IGNORE INTO hidden_journey_entries(owner_id, kind, reference) VALUES (?, ?, ?)').run(owner, kind, id);
+    } else if (kind === 'sos' && keyValid(id) && typeof ownerId === 'string') {
+      const event = await database.prepare('SELECT 1 FROM sos_events WHERE owner_id = ? AND client_id = ?').get(ownerId, id);
+      const recipient = await database.prepare('SELECT acknowledged_at FROM sos_recipients WHERE owner_id = ? AND client_id = ? AND peer_id = ?').get(ownerId, id, owner);
+      if (!event || ownerId !== owner && !recipient) return response.status(404).json({ message: 'Запись не найдена' });
+      const pending = ownerId === owner ? await database.prepare('SELECT 1 FROM sos_recipients WHERE owner_id = ? AND client_id = ? AND acknowledged_at IS NULL').get(ownerId, id) : !recipient.acknowledged_at;
+      if (pending) return response.status(409).json({ message: 'Сначала обработайте SOS' });
+      await database.prepare('INSERT OR IGNORE INTO hidden_journey_entries(owner_id, kind, reference) VALUES (?, ?, ?)').run(owner, kind, `${ownerId}:${id}`);
+    } else return response.status(400).json({ message: 'Некорректная запись' });
+    response.json({ ok: true });
+  }));
+  router.delete('/entries/history', database.handle(async (request, response) => {
+    const owner = request.user.id;
+    await database.transaction(async () => {
+      await database.prepare(`INSERT OR IGNORE INTO hidden_journey_entries(owner_id, kind, reference)
+        SELECT ?, 'journey', j.id FROM journeys j WHERE j.status NOT IN ('active', 'pending') AND
+        (j.owner_id = ? OR EXISTS (SELECT 1 FROM journey_recipients r WHERE r.journey_id = j.id AND r.peer_id = ?))`).run(owner, owner, owner);
+      await database.prepare(`INSERT OR IGNORE INTO hidden_journey_entries(owner_id, kind, reference)
+        SELECT ?, 'sos', r.owner_id || ':' || r.client_id FROM sos_recipients r WHERE r.peer_id = ? AND r.acknowledged_at IS NOT NULL`).run(owner, owner);
+      await database.prepare(`INSERT OR IGNORE INTO hidden_journey_entries(owner_id, kind, reference)
+        SELECT ?, 'sos', e.owner_id || ':' || e.client_id FROM sos_events e WHERE e.owner_id = ? AND
+        NOT EXISTS (SELECT 1 FROM sos_recipients r WHERE r.owner_id = e.owner_id AND r.client_id = e.client_id AND r.acknowledged_at IS NULL)`).run(owner, owner);
+    });
+    response.json({ ok: true });
+  }));
   const transaction = async (operation) => await database.transaction(operation);
   const keyValid = (key) => typeof key === 'string' && /^[a-zA-Z0-9_-]{8,100}$/.test(key);
   const pointValid = (point) => point && Number.isFinite(point.latitude) && point.latitude >= -90 && point.latitude <= 90 && Number.isFinite(point.longitude) && point.longitude >= -180 && point.longitude <= 180;
@@ -158,7 +194,8 @@ async function createJourneyService(database, now = Date.now) {
     const receivedSOS = await database.prepare(`SELECT e.owner_id AS ownerId, e.client_id AS clientId, e.created_at AS createdAt, u.name, r.acknowledged_at AS acknowledgedAt, r.route_started_at AS routeStartedAt
       FROM sos_recipients r JOIN sos_events e ON e.owner_id = r.owner_id AND e.client_id = r.client_id JOIN users u ON u.id = e.owner_id
       WHERE r.peer_id = ? ORDER BY e.created_at DESC LIMIT 20`).all(owner);
-    response.json({ active: await serialize(active), history, received, sentSOS, receivedSOS, preferences: await preferences(owner), favoriteRoutes: (await database.prepare('SELECT slot, plan FROM favorite_routes WHERE owner_id = ?').all(owner)).map((row) => ({ slot: row.slot, ...JSON.parse(row.plan) })), places: (await database.prepare('SELECT slot, point FROM saved_places WHERE owner_id = ? ORDER BY slot').all(owner)).map((row) => ({ slot: row.slot, ...JSON.parse(row.point) })), unreadCount });
+    const hidden = new Set((await database.prepare('SELECT kind, reference FROM hidden_journey_entries WHERE owner_id = ?').all(owner)).map(row => `${row.kind}:${row.reference}`));
+    response.json({ active: await serialize(active), history: history.filter(item => !hidden.has(`journey:${item.id}`)), received: received.filter(item => !hidden.has(`journey:${item.id}`)), sentSOS: sentSOS.filter(item => !hidden.has(`sos:${owner}:${item.clientId}`)), receivedSOS: receivedSOS.filter(item => !hidden.has(`sos:${item.ownerId}:${item.clientId}`)), preferences: await preferences(owner), favoriteRoutes: (await database.prepare('SELECT slot, plan FROM favorite_routes WHERE owner_id = ?').all(owner)).map((row) => ({ slot: row.slot, ...JSON.parse(row.plan) })), places: (await database.prepare('SELECT slot, point FROM saved_places WHERE owner_id = ? ORDER BY slot').all(owner)).map((row) => ({ slot: row.slot, ...JSON.parse(row.point) })), unreadCount });
   });
   router.put('/preferences', database.handle(async (request, response) => {
     const current = await preferences(request.user.id);
