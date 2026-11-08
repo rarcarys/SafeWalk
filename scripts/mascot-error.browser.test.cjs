@@ -1,0 +1,23 @@
+const test=require('node:test');
+const {chromium,expect}=require('@playwright/test');
+test('invalid credentials surprise the stoat with upright ears, and editing clears it',{timeout:60000},async t=>{
+ const browser=await chromium.launch({channel:'chrome',headless:true});t.after(()=>browser.close());
+ const page=await browser.newPage({viewport:{width:1440,height:900},reducedMotion:'no-preference'});
+ await page.route('**/api/auth/me',r=>r.fulfill({status:401,json:{message:'Войдите снова'}}));
+ await page.route('**/api/auth/login',r=>r.fulfill({status:401,json:{message:'Неверный email или пароль'}}));
+ await page.goto('http://localhost:8081');await page.getByRole('dialog').waitFor();
+ await page.getByRole('button',{name:'Войти',exact:true}).last().click();
+ const canvas=page.getByTestId('firefly-canvas');
+ await expect(page.getByTestId('firefly-idle')).toHaveAttribute('data-ready','ready');
+ await page.getByLabel('Email',{exact:true}).fill('walker@example.com');
+ await page.getByLabel('Пароль',{exact:true}).fill('wrong-password');
+ await page.getByRole('button',{name:'Войти',exact:true}).click();
+ await expect.poll(async()=>Number(await canvas.getAttribute('data-error-amount'))).toBeGreaterThan(.7);
+ await expect.poll(async()=>Number(await canvas.getAttribute('data-ear-drop'))).toBeLessThan(.3);
+ await canvas.screenshot({path:'.preview/mascot-error-surprise.png'});
+ await page.waitForTimeout(700);
+ await expect(canvas).toHaveAttribute('data-ear-drop','0');
+ await canvas.screenshot({path:'.preview/mascot-error-droop.png'});
+ await page.getByLabel('Email',{exact:true}).fill('new@example.com');
+ await expect.poll(async()=>Number(await canvas.getAttribute('data-error-amount'))).toBeLessThan(.01);
+});
