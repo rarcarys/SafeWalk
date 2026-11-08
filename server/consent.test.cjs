@@ -2,7 +2,7 @@ const test = require('node:test');
 const assert = require('node:assert/strict');
 const { fixture } = require('./test-support.cjs');
 
-test('explicit contact and trip consent, location privacy, blocking', async t => {
+test('trusted contact access, immediate start, optional watching, blocking', async t => {
   const { call, user } = await fixture(t);
   const alice = await user('alice'), bob = await user('bob'), outsider = await user('outsider');
   await call('circle/contacts', alice.token, { email: bob.user.email });
@@ -14,15 +14,18 @@ test('explicit contact and trip consent, location privacy, blocking', async t =>
   await call(`circle/invitations/${alice.user.id}/respond`, bob.token, { decision: 'accepted' });
   await call('journeys/preferences', alice.token, { sharing: true }, 'PUT');
   const pending = (await call('journeys', alice.token, plan)).body.journey;
-  assert.equal(pending.status, 'pending');
+  assert.equal(pending.status, 'active');
   let shared = (await call('journeys/state', bob.token)).body.received[0];
-  assert.equal(shared.consent, 'pending'); assert.equal(shared.target.latitude, undefined);
-  assert.equal((await call(`journeys/${pending.id}/action`, alice.token, { action: 'arrive', clientId: 'pending_arrival' })).status, 409);
+  assert.equal(shared.consent, 'pending'); assert.equal(shared.target.latitude, target.latitude);
+  assert.equal((await call(`journeys/${pending.id}/action`, alice.token, { action: 'extend', clientId: 'immediate_extend' })).status, 200);
+  const expectedAt = (await call('journeys/state', alice.token)).body.active.expectedAt;
   assert.equal((await call(`journeys/${pending.id}/respond`, outsider.token, { decision: 'accepted' })).status, 404);
   await call(`journeys/${pending.id}/respond`, bob.token, { decision: 'accepted' });
   assert.equal((await call('journeys/state', alice.token)).body.active.status, 'active');
   shared = (await call('journeys/state', bob.token)).body.received[0];
   assert.equal(shared.target.latitude, target.latitude);
+  assert.equal((await call('journeys/state', alice.token)).body.active.expectedAt, expectedAt);
+  assert.equal((await call(`journeys/${pending.id}/action`, alice.token, { action: 'arrive', clientId: 'immediate_arrival' })).status, 200);
   await call('journeys/sos/send', alice.token, { clientId: 'received_sos_key', includeLocation: false });
   assert.equal((await call(`journeys/sos/${alice.user.id}/received_sos_key/acknowledge`, outsider.token, {})).status, 403);
   assert.equal((await call(`journeys/sos/${alice.user.id}/received_sos_key/acknowledge`, bob.token, {})).status, 200);

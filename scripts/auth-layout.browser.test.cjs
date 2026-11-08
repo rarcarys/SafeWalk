@@ -1,0 +1,53 @@
+const test=require('node:test');
+const assert=require('node:assert/strict');
+const {chromium,expect}=require('@playwright/test');
+
+test('compact auth layout keeps login, recovery and registration usable across sizes and themes',{timeout:90000},async t=>{
+ const browser=await chromium.launch({channel:'chrome',headless:true});t.after(()=>browser.close());
+ for(const viewport of [{width:320,height:568},{width:390,height:844},{width:1440,height:900}]){
+  const context=await browser.newContext({viewport,reducedMotion:'reduce',colorScheme:'light'});
+  const page=await context.newPage(),errors=[];page.on('pageerror',e=>errors.push(e.message));
+  await page.route('**/api/auth/me',route=>route.fulfill({status:401,json:{message:'Войдите снова'}}));
+  await page.goto('http://localhost:8081');
+  await page.getByRole('dialog').waitFor();
+  await page.getByRole('button',{name:'Войти',exact:true}).last().click();
+  await expect(page.getByRole('tab',{name:'Вход',exact:true})).toHaveAttribute('aria-selected','true');
+  await expect(page.getByTestId('firefly-idle')).toHaveAttribute('data-ready','ready',{timeout:30000});
+  await expect(page.getByTestId('firefly-canvas')).toHaveCount(1);
+  await expect(page.getByText('Спокойнее,',{exact:false})).toHaveCount(0);
+  await expect(page.getByLabel('Email',{exact:true})).toBeVisible();
+  const signIn=page.getByRole('button',{name:'Войти',exact:true});
+  await signIn.scrollIntoViewIfNeeded();
+  const bounds=await signIn.boundingBox();
+  assert.ok(bounds.x>=0&&bounds.x+bounds.width<=viewport.width,'primary action fits horizontally');
+  assert.ok(bounds.y>=0&&bounds.y+bounds.height<=viewport.height,'primary action can be reached on small screens');
+  assert.ok(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth),'no horizontal overflow');
+  await page.screenshot({path:`.preview/auth-login-${viewport.width}-light.png`,fullPage:true});
+  await page.getByRole('button',{name:'Войти',exact:true}).click();
+  await expect(page.getByText('Введите корректный email',{exact:true})).toBeVisible();
+  await expect(page.getByText('Введите пароль',{exact:true})).toBeVisible();
+  await page.getByRole('button',{name:'Забыли пароль?',exact:true}).click();
+  await expect(page.getByText('Восстановить доступ',{exact:true}).first()).toBeVisible();
+  await page.getByRole('button',{name:'Закрыть',exact:true}).click();
+  await page.getByRole('tab',{name:'Регистрация',exact:true}).click();
+  await page.getByRole('tab',{name:'Вход',exact:true}).click();
+  await page.getByRole('button',{name:'Включить тёмную тему',exact:true}).click();
+  await page.screenshot({path:`.preview/auth-login-${viewport.width}-dark.png`,fullPage:true});
+  await page.getByRole('tab',{name:'Регистрация',exact:true}).click();
+  await expect(page.getByTestId('firefly-idle')).toHaveAttribute('data-ready','ready',{timeout:30000});
+  await expect(page.getByLabel('Имя',{exact:true})).toHaveCount(0);
+  await expect(page.getByLabel('Повторите пароль',{exact:true})).toHaveCount(0);
+  await page.getByLabel('Email',{exact:true}).fill('walker@example.com');
+  await page.getByLabel('Пароль',{exact:true}).fill('private-layout-password');
+  await page.getByRole('button',{name:'Продолжить',exact:true}).click();
+  await expect(page.getByLabel('Имя',{exact:true})).toBeVisible();
+  await expect(page.getByLabel('Email',{exact:true})).toHaveCount(0);
+  await page.screenshot({path:`.preview/auth-name-${viewport.width}-dark.png`,fullPage:true});
+  await expect(page.getByRole('tablist')).toHaveCount(0);
+  await page.getByRole('button',{name:'Назад',exact:true}).click();
+  await page.getByRole('tab',{name:'Вход',exact:true}).click();
+  await expect(page.getByTestId('firefly-canvas')).toHaveCount(1);
+  assert.deepEqual(errors,[]);
+  await context.close();
+ }
+});

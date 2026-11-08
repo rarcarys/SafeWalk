@@ -6,8 +6,9 @@ export default function useAuth() {
   const [user, setUser] = useState(null);
   const [restoring, setRestoring] = useState(true);
   const [authError, setAuthError] = useState('');
+  const [sessionEnded, setSessionEnded] = useState(false);
   useEffect(() => onSessionExpired(() => {
-    setUser(null); setAuthError('Сессия завершена. Войдите снова.');
+    setUser(null); setAuthError(''); setSessionEnded(true);
     clearSession().catch(() => {});
   }), []);
   useEffect(() => {
@@ -34,10 +35,13 @@ export default function useAuth() {
     user,
     restoring,
     authError,
+    sessionEnded,
+    dismissSessionEnded: () => setSessionEnded(false),
     onUpdateUser: account => { setUser(account); writeLocal('last-user', account).catch(() => {}); },
     onDeleted: () => setUser(null),
     onAuthenticated: (account) => {
       setAuthError('');
+      setSessionEnded(false);
       setUser(account);
       writeLocal('last-user', account).catch(() => {});
     },

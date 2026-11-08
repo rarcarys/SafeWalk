@@ -3,7 +3,7 @@ const assert = require('node:assert/strict');
 const { chromium } = require('@playwright/test');
 const { fixture } = require('../server/test-support.cjs');
 
-test('SOS rehearsal is local, countdown cancels, home uses GPS and arrival finishes the trip', { timeout: 120000 }, async t => {
+test('SOS includes GPS by default, home uses GPS and confirmed arrival finishes the trip', { timeout: 120000 }, async t => {
   const { call, user, base } = await fixture(t);
   const owner = await user('trip-features-owner'), peer = await user('trip-features-peer');
   const added = await call('circle/contacts', owner.token, { email: peer.user.email });
@@ -37,16 +37,11 @@ test('SOS rehearsal is local, countdown cancels, home uses GPS and arrival finis
   await page.getByLabel('Пароль', { exact: true }).fill('test-password-2026');
   await page.getByRole('button', { name: 'Войти', exact: true }).click();
   await page.getByRole('button', { name: 'Открыть SOS', exact: true }).click();
-  await page.getByRole('checkbox', { name: 'Тестовый режим SOS', exact: true }).click();
-  await page.getByRole('button', { name: 'Проверить SOS без отправки', exact: true }).click();
-  await page.getByText('Проверка завершена.', { exact: false }).waitFor();
+  assert.equal(await page.getByRole('checkbox', { name: 'Тестовый режим SOS', exact: true }).count(), 0);
+  await page.getByRole('button', { name: 'Закрыть', exact: true }).last().click();
   assert.equal(sent, 0);
-  await page.getByRole('checkbox', { name: 'Тестовый режим SOS', exact: true }).click();
-  await page.getByRole('button', { name: 'Отправить SOS в чаты', exact: true }).click();
-  await page.getByRole('button', { name: 'Отменить отправку SOS', exact: true }).click();
-  await page.waitForTimeout(5200);
-  assert.equal(sent, 0);
-  await page.getByRole('button', { name: 'Отправить SOS в чаты', exact: true }).click();
+  await page.getByRole('button', { name: 'Открыть SOS', exact: true }).click();
+  await page.getByRole('button', { name: 'Отправить SOS', exact: true }).click();
   await page.getByText('SOS добавлен в чаты:', { exact: false }).waitFor();
   assert.equal(sent, 1);
   await page.getByRole('button', { name: 'Быстрый маршрут домой', exact: true }).click();
@@ -63,11 +58,12 @@ test('SOS rehearsal is local, countdown cancels, home uses GPS and arrival finis
   assert.equal(await page.getByLabel('Минуты в пути', { exact: true }).inputValue(), '30');
   await page.getByRole('checkbox', { name: 'С сопровождением', exact: true }).click();
   await page.getByRole('button', { name: 'Начать без сопровождения', exact: true }).click();
-  await page.getByText('Геопозиция не передаётся контактам', { exact: true }).waitFor();
+  await page.getByRole('button', { name: 'Я на месте', exact: true }).waitFor();
   assert.equal((await call('journeys/state', owner.token)).body.active.transport, 'bus');
   assert.equal((await call('journeys/state', owner.token)).body.active.minutes, 90);
   await page.getByRole('button', { name: 'Я на месте', exact: true }).click();
-  await page.getByText('Прибытие подтверждено', { exact: true }).first().waitFor();
+  await page.getByRole('button', { name: 'Да, я на месте', exact: true }).click();
+  await page.getByRole('button', { name: 'Я на месте', exact: true }).waitFor({ state: 'hidden' });
   assert.equal((await call('journeys/state', owner.token)).body.active, null);
   assert.deepEqual(errors, []);
 });

@@ -33,12 +33,10 @@ test('training, timers, presets, quick chat and guest links work from the mobile
   };
   await openTools();
   fs.mkdirSync('.preview', { recursive: true });
-  await page.getByRole('button', { name: 'Тренировка SOS', exact: true }).waitFor();
+  await page.getByRole('button', { name: 'Проверь меня', exact: true }).waitFor();
   await page.screenshot({ path: '.preview/safety-tools-menu.png', fullPage: true, animations: 'disabled' });
-  await page.getByRole('button', { name: 'Тренировка SOS', exact: true }).click();
-  await page.getByRole('button', { name: 'Начать тренировку', exact: true }).click();
-  await page.getByRole('button', { name: 'Смоделировать подтверждение', exact: true }).click();
-  await page.getByRole('button', { name: 'Завершить тренировку', exact: true }).click();
+  assert.equal(await page.getByRole('button', { name: 'Тренировка SOS', exact: true }).count(), 0);
+  await page.getByRole('button', { name: 'Закрыть', exact: true }).last().click();
   assert.equal(realSOS, 0);
   assert.equal((await call(`circle/chats/${owner.user.id}/messages`, peer.token)).body.messages.length, 0);
 

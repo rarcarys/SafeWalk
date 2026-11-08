@@ -1,0 +1,11 @@
+**
+!package.json
+!package-lock.json
+!server/
+!server/**
+!scripts/
+!scripts/postgres-local.cjs
+!src/
+!src/data/
+!src/data/**
+server/*.test.cjs

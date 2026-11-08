@@ -30,6 +30,16 @@ test('contact presence and battery show in the list, card and live chat; local h
   await page.getByRole('button', { name: 'Войти', exact: true }).click();
   await heartbeat;
   assert.deepEqual(heartbeats[0], { battery: { level: 42, charging: false } });
+  const point = { name: 'Парк', latitude: 43.24, longitude: 76.93 };
+  const trip = (await call('journeys', owner.token, { clientId: 'presence_trip_001', origin: point, target: point, transport: 'walk', minutes: 15, accompanied: true, route: { distance: 1000, duration: 900, coordinates: [point, point] } })).body.journey;
+  assert.equal(trip.status, 'active');
+  await page.reload();
+  await page.getByText('68%', { exact: true }).waitFor();
+  assert.equal(await page.getByText('42%', { exact: true }).count(), 0);
+  assert.equal(await page.getByText(/Сервер подтвердил обновление|Передача координат ещё не подтверждена/).count(), 0);
+  await page.screenshot({ path: '.preview/trip-contact-battery.png', fullPage: true, animations: 'disabled' });
+  await call(`journeys/${trip.id}/action`, owner.token, { action: 'cancel', clientId: 'presence_cancel_001' });
+  await page.reload();
   await page.getByRole('tab', { name: 'Контакты', exact: true }).click();
   const contact = page.getByRole('button', { name: `Контакт ${peer.user.name}`, exact: true });
   await contact.getByText('В сети', { exact: true }).waitFor();

@@ -20,7 +20,8 @@
       }
     },
     "android": {
-      "package": "com.safewalk.local"
+      "package": "com.safewalk.local",
+      "softwareKeyboardLayoutMode": "resize"
     },
     "web": {
       "bundler": "metro",

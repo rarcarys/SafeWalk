@@ -64,10 +64,10 @@
   box-sizing: border-box;
 }
 .safewalk-pin .origin {
-  background: #3169e8;
+  background: #087c5a;
 }
 .safewalk-pin .target {
-  background: #202124;
+  background: #26312c;
 }
 .map-error {
   position: absolute;

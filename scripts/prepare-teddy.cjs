@@ -16,13 +16,9 @@ fs.copyFileSync(path.join(root, 'assets', 'mascot', 'RIVE-LICENSE.txt'), path.jo
 const bundle = {
   version,
   javascript: fs.readFileSync(path.join(runtimeDirectory, 'rive.js'), 'utf8'),
-  controller: fs.readFileSync(path.join(root, 'src', 'services', 'teddyController.js'), 'utf8').replace('export function createTeddyController', 'function createTeddyController'),
+  controller: fs.readFileSync(path.join(root, 'src', 'services', 'fireflyController.js'), 'utf8').replace('export function createFireflyController', 'function createFireflyController'),
   wasm: `data:application/wasm;base64,${fs.readFileSync(path.join(runtimeDirectory, 'rive.wasm')).toString('base64')}`,
   animation: animation.toString('base64'),
 };
-fs.writeFileSync(path.join(root, 'assets', 'mascot', 'teddy-native-runtime.json'), JSON.stringify(bundle));
-fs.writeFileSync(path.join(root, 'assets', 'mascot', 'firefly-native-runtime.json'), JSON.stringify({
-  ...bundle,
-  controller: fs.readFileSync(path.join(root, 'src', 'services', 'fireflyController.js'), 'utf8').replace('export function createFireflyController', 'function createFireflyController'),
-}));
-console.log(`Packaged Teddy, minimalist firefly, and offline Rive runtime ${version}`);
+fs.writeFileSync(path.join(root, 'assets', 'mascot', 'firefly-native-runtime.json'), JSON.stringify(bundle));
+console.log(`Packaged auth mascot and offline Rive runtime ${version}`);

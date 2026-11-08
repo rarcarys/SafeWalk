@@ -34,7 +34,8 @@ test('configurable check-in, SOS escalation, low battery and favorite routes', a
   await t.test('server waits for configured grace and arrival stops further escalation', async () => {
     const created = await call('journeys', owner.token, { clientId: 'safety_trip_001', origin, target, transport: 'walk', minutes: 1, accompanied: true, route: { distance: 1000, duration: 60, coordinates: [origin, target] } });
     trip = created.body.journey;
-    for (const person of [primary, backup]) await call(`journeys/${trip.id}/respond`, person.token, { decision: 'accepted' });
+    assert.equal(trip.status, 'active');
+    assert.ok(trip.recipients.every(person => person.consent === 'pending'));
     trip = (await state(owner)).active;
     time = trip.expectedAt;
     await service.processDueJourneys();

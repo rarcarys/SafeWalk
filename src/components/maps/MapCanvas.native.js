@@ -54,13 +54,13 @@ export default function MapCanvas({
     });
   }}>
 
-      {origin.chosen !== false && <Marker coordinate={origin} title={t("Точка отправления")} pinColor="#3169e8" />}
-      {currentPosition && <Marker coordinate={currentPosition} title={t("Местоположение")} pinColor="#3169e8" onPress={onCurrentPositionPress ? () => onCurrentPositionPress(currentPosition) : undefined} />}
-      {target && <Marker coordinate={target} title={target.name} pinColor="#202124" />}
+      {origin.chosen !== false && <Marker coordinate={origin} title={t("Точка отправления")} pinColor="#087C5A" />}
+      {currentPosition && <Marker coordinate={currentPosition} title={t("Местоположение")} pinColor="#087C5A" onPress={onCurrentPositionPress ? () => onCurrentPositionPress(currentPosition) : undefined} />}
+      {target && <Marker coordinate={target} title={target.name} pinColor="#26312C" />}
       {route && <>
           <Polyline coordinates={route.coordinates} strokeColor="#ffffff" strokeWidth={9} />
 
-          <Polyline coordinates={route.coordinates} strokeColor="#3169e8" strokeWidth={5} />
+          <Polyline coordinates={route.coordinates} strokeColor="#087C5A" strokeWidth={5} />
 
         </>}
     </MapView>;

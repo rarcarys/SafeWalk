@@ -360,7 +360,7 @@ export function createAppStyles(colors, fontScale) {
     width: 62,
     height: 62,
     borderRadius: 31,
-    backgroundColor: '#3169e822',
+    backgroundColor: '#087C5A22',
     alignItems: 'center',
     justifyContent: 'center',
   },

@@ -1,0 +1,34 @@
+const test = require('node:test');
+const assert = require('node:assert/strict');
+const { fixture } = require('./test-support.cjs');
+
+test('notification receipts distinguish server storage, app receipt and reading and isolate accounts', async t => {
+  const { call, user } = await fixture(t);
+  const alice = await user('status-alice'), bob = await user('status-bob'), eve = await user('status-eve');
+  await call('circle/contacts', alice.token, { email: bob.user.email });
+  await call(`circle/invitations/${alice.user.id}/respond`, bob.token, { decision: 'accepted' });
+  const origin = { name: 'Start', latitude: 43, longitude: 76 }, target = { name: 'Home', latitude: 43.1, longitude: 76.1 };
+  const trip = (await call('journeys', alice.token, { clientId: 'status_trip_001', origin, target, transport: 'walk', minutes: 10, accompanied: true, route: { distance: 1000, duration: 600, coordinates: [origin, target] } })).body.journey;
+  const sent = async who => (await call(`notifications/sent?journeyId=${trip.id}`, who.token)).body.messages;
+  let messages = await sent(alice);
+  assert.equal(messages.length, 1);
+  assert.equal(messages[0].status, 'saved');
+  assert.equal(messages[0].pushStatus, 'unavailable');
+  assert.deepEqual(await sent(eve), []);
+  assert.equal((await call('notifications/sent', null)).status, 401);
+  assert.equal((await call('notifications/sent?journeyId=bad', alice.token)).status, 400);
+  const id = messages[0].id;
+  await call('notifications/received', eve.token, { ids: [id] });
+  assert.equal((await sent(alice))[0].status, 'saved');
+  const inbox = await call('notifications/messages', bob.token);
+  assert.deepEqual(inbox.body.messages, []);
+  assert.ok(inbox.body.receiptMessages.some(item => item.id === id && item.text === messages[0].text));
+  for (let n = 0; n < 2; n++) assert.equal((await call('notifications/received', bob.token, { ids: [id] })).status, 200);
+  messages = await sent(alice);
+  assert.equal(messages[0].status, 'received');
+  assert.ok(messages[0].receivedAt);
+  await call(`circle/chats/${alice.user.id}/read`, bob.token, { lastId: id }, 'PUT');
+  assert.equal((await sent(alice))[0].status, 'read');
+  assert.equal((await call('notifications/received', bob.token, { ids: [-1] })).status, 400);
+  assert.equal((await call('notifications/received', bob.token, { ids: Array(51).fill(id) })).status, 400);
+});

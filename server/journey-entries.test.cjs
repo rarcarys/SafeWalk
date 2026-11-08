@@ -1,0 +1,55 @@
+const test = require('node:test');
+const assert = require('node:assert/strict');
+const { fixture } = require('./test-support.cjs');
+
+test('personal deletion persists and preserves peer history, active trips and unhandled SOS', async t => {
+  const { call, user } = await fixture(t);
+  const a = await user('entries-a'), b = await user('entries-b'), c = await user('entries-c');
+  await call('circle/contacts', a.token, { email: b.user.email });
+  await call(`circle/invitations/${a.user.id}/respond`, b.token, { decision: 'accepted' });
+  const point = { name: 'Home', latitude: 43, longitude: 76 };
+  const trip = (await call('journeys', a.token, { clientId: 'entries_trip_01', origin: point, target: point, transport: 'walk', minutes: 10, accompanied: true, route: { distance: 1000, duration: 600, coordinates: [point, point] } })).body.journey;
+  const remove = (person, body) => call('journeys/entries', person.token, body, 'DELETE');
+  const state = async person => (await call('journeys/state', person.token)).body;
+  const entry = { kind: 'journey', id: trip.id };
+  assert.equal((await remove(a, entry)).status, 409);
+  assert.equal((await remove(c, entry)).status, 404);
+  await call(`journeys/${trip.id}/action`, a.token, { action: 'arrive', clientId: 'entries_arrive_01' });
+  for (let n = 0; n < 2; n++) assert.equal((await remove(a, entry)).status, 200);
+  assert.deepEqual((await state(a)).history, []);
+  assert.equal((await state(b)).received.length, 1);
+  assert.equal((await remove(b, entry)).status, 200);
+  assert.deepEqual((await state(b)).received, []);
+  await call('journeys/sos/send', a.token, { clientId: 'entries_sos_01', includeLocation: false });
+  const sos = { kind: 'sos', id: 'entries_sos_01', ownerId: a.user.id };
+  assert.equal((await remove(a, sos)).status, 409);
+  assert.equal((await remove(b, sos)).status, 409);
+  assert.equal((await remove(c, sos)).status, 404);
+  await call(`journeys/sos/${a.user.id}/entries_sos_01/acknowledge`, b.token, {});
+  assert.equal((await remove(b, sos)).status, 200);
+  assert.deepEqual((await state(b)).receivedSOS, []);
+  assert.equal((await state(a)).sentSOS.length, 1);
+  assert.equal((await remove(a, sos)).status, 200);
+  assert.deepEqual((await state(a)).sentSOS, []);
+  assert.equal((await call(`journeys/sos/${a.user.id}/entries_sos_01`, b.token)).status, 200);
+  assert.equal((await remove(a, { kind: 'invalid' })).status, 400);
+  for (let n = 0; n < 2; n++) {
+    const created = (await call('journeys', a.token, { clientId: `bulk_trip_${n}`, origin: point, target: point, transport: 'walk', minutes: 10, accompanied: true, route: { distance: 1000, duration: 600, coordinates: [point, point] } })).body.journey;
+    await call(`journeys/${created.id}/action`, a.token, { action: 'arrive', clientId: `bulk_arrive_${n}` });
+  }
+  const active = (await call('journeys', a.token, { clientId: 'bulk_active_trip', origin: point, target: point, transport: 'walk', minutes: 10, accompanied: true, route: { distance: 1000, duration: 600, coordinates: [point, point] } })).body.journey;
+  await call('journeys/sos/send', a.token, { clientId: 'bulk_processed_sos', includeLocation: false });
+  await call(`journeys/sos/${a.user.id}/bulk_processed_sos/acknowledge`, b.token, {});
+  await call('journeys/sos/send', a.token, { clientId: 'bulk_pending_sos', includeLocation: false });
+  assert.equal((await state(a)).history.length, 2);
+  assert.equal((await call('journeys/entries/history', a.token, {}, 'DELETE')).status, 200);
+  assert.deepEqual((await state(a)).history, []);
+  assert.equal((await state(a)).active.id, active.id);
+  assert.equal((await state(a)).sentSOS.length, 1);
+  assert.equal((await state(a)).sentSOS[0].clientId, 'bulk_pending_sos');
+  assert.equal((await state(b)).received.filter(item => item.status === 'arrived').length, 2);
+  assert.equal((await call('journeys/entries/history', b.token, {}, 'DELETE')).status, 200);
+  assert.equal((await state(b)).received.length, 1);
+  assert.equal((await state(b)).receivedSOS.length, 1);
+  assert.equal((await state(b)).receivedSOS[0].clientId, 'bulk_pending_sos');
+});

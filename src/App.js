@@ -8,6 +8,7 @@ import { SafeAreaProvider } from 'react-native-safe-area-context';
 import SafeWalk from './SafeWalk';
 import AuthScreen from './screens/AuthScreen';
 import Splash from './components/Splash';
+import SessionEndedDialog from './components/SessionEndedDialog';
 import React, { useEffect } from 'react';
 import { actionSOS } from './services/actionSOS';
 if (Platform.OS !== 'web') SplashScreen.preventAutoHideAsync().catch(() => {});
@@ -20,6 +21,8 @@ function AppContent() {
     user,
     restoring,
     authError,
+    sessionEnded,
+    dismissSessionEnded,
     onUpdateUser,
     onDeleted,
     onAuthenticated,
@@ -34,7 +37,8 @@ function AppContent() {
   }, [appReady]);
   if (!appReady) return <Splash />;
   return <SafeAreaProvider>
-      {user ? <SafeWalk key={user.id} user={user} onUpdateUser={onUpdateUser} onDeleted={onDeleted} onSignOut={onSignOut} /> : <AuthScreen initialError={authError} onAuthenticated={onAuthenticated} />}
+      {user ? <SafeWalk key={user.id} user={user} onUpdateUser={onUpdateUser} onDeleted={onDeleted} onSignOut={onSignOut} /> : <AuthScreen initialError={authError} greeting={!sessionEnded} onAuthenticated={onAuthenticated} />}
+      <SessionEndedDialog visible={sessionEnded} onClose={dismissSessionEnded} />
     </SafeAreaProvider>;
 }
 export default function App() {

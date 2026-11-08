@@ -101,7 +101,7 @@ export default function MapCanvas({
         weight: 9
       }).addTo(layers.current);
       L.polyline(route.coordinates.map(latLng), {
-        color: '#3169e8',
+        color: '#087C5A',
         weight: 5,
         lineCap: 'round'
       }).addTo(layers.current);
@@ -128,7 +128,7 @@ export default function MapCanvas({
       radius: 8,
       color: '#fff',
       weight: 3,
-      fillColor: '#3169e8',
+      fillColor: '#087C5A',
       fillOpacity: 1
     }).bindTooltip(tooltip(t("Местоположение"))).addTo(map.current);
     marker.on('click', event => {

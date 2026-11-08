@@ -1,0 +1,40 @@
+name: safewalk
+services:
+  postgres:
+    image: postgres:18-bookworm
+    environment:
+      POSTGRES_USER: safewalk
+      POSTGRES_DB: safewalk
+      POSTGRES_PASSWORD: ${DOCKER_POSTGRES_PASSWORD:?Run node scripts/docker.cjs setup first}
+    ports:
+      - "127.0.0.1:${DOCKER_POSTGRES_PORT:-5434}:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U safewalk -d safewalk"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+    restart: unless-stopped
+  api:
+    build: .
+    environment:
+      AUTH_PORT: 3001
+      AUTH_ALLOWED_ORIGINS: ${DOCKER_AUTH_ALLOWED_ORIGINS:-http://localhost:8081,http://127.0.0.1:8081}
+      DATABASE_URL: postgresql://safewalk:${DOCKER_POSTGRES_PASSWORD}@postgres:5432/safewalk
+      SAFEWALK_PUSH_ENABLED: ${SAFEWALK_PUSH_ENABLED:-0}
+    ports:
+      - "${DOCKER_API_PORT:-3001}:3001"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:3001/health').then(async r=>{if(!r.ok||(await r.json()).database!=='postgres')process.exit(1)}).catch(()=>process.exit(1))"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 30s
+    init: true
+    restart: unless-stopped
+volumes:
+  postgres_data:
