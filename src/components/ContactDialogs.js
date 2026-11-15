@@ -68,10 +68,13 @@ export default function ContactDialogs({
   const problem = !!warning && <Text role="alert" style={s.mapError}>{t(warning)}</Text>;
   const input = (label, value, onChange, placeholder, type = 'default', length = 50) => <TextInput accessibilityLabel={label} value={value} onChangeText={onChange} placeholder={placeholder} placeholderTextColor={colors.muted} keyboardType={type} autoCapitalize={type === 'email-address' ? 'none' : 'sentences'} autoCorrect={false} maxLength={length} editable={!busy} style={s.contactInput} />;
   const emailField = input(t("Email контакта"), email, setEmail, t("Email аккаунта SafeWalk"), 'email-address', 254);
-  const fields = <>
-    {input(t("Имя контакта"), name, setName, mode === 'phone' || dialog === 'editContact' ? t("Имя контакта") : t("Имя (необязательно)"))}
-    {mode === 'email' && dialog !== 'editContact' && emailField}
-    {input(t("Телефон контакта"), phone, setPhone, mode === 'phone' ? t("Телефон с кодом страны") : t("Телефон (необязательно)"), 'phone-pad', 30)}
+  const phoneFields = <>
+    {input(t("Имя контакта"), name, setName, t("Имя контакта"))}
+    {input(t("Телефон контакта"), phone, setPhone, t("Телефон с кодом страны"), 'phone-pad', 30)}
+  </>;
+  const editFields = <>
+    {input(t("Имя контакта"), name, setName, t("Имя контакта"))}
+    {input(t("Телефон контакта"), phone, setPhone, t("Телефон (необязательно)"), 'phone-pad', 30)}
     {input(t("Кто вам этот человек"), relation, setRelation, t("Кто вам этот человек (необязательно)"))}
   </>;
   const blocked = loading || !!loadError || busy;
@@ -127,16 +130,15 @@ export default function ContactDialogs({
       </View>
       <Text style={[s.rowSubtitle, {
         marginTop: 12
-      }]}>{mode === 'email' ? t("Email зарегистрированного аккаунта — для чата и сопровождения.") : t("Телефонный контакт можно вызвать из карточки и окна SOS. Сообщения в приложении требуют аккаунта.")}</Text>
+      }]}>{mode === 'email' ? t("Имя подтянется из аккаунта SafeWalk.") : t("Для звонка из карточки контакта и окна SOS.")}</Text>
       <ScrollView style={{
         maxHeight: height * 0.42
-      }} keyboardShouldPersistTaps="handled">{fields}</ScrollView>
+      }} keyboardShouldPersistTaps="handled">{mode === 'email' ? emailField : phoneFields}</ScrollView>
       {problem}
       <View style={s.formActions}><ActionButton title={t("Добавить")} icon="user-plus" busy={busy} disabled={loading || !!loadError || (mode === 'email' ? !email.trim() : !name.trim() || !phone.trim())} onPress={() => save(() => contacts.addContact({
           email: mode === 'email' ? email : undefined,
-          name,
-          phone,
-          relation
+          name: mode === 'phone' ? name : undefined,
+          phone: mode === 'phone' ? phone : undefined
         }))} /></View>
     </ModalSheet>
     <ModalSheet visible={dialog === 'person'} title={t('Контакт')} onClose={close}>
@@ -178,7 +180,7 @@ export default function ContactDialogs({
     <ModalSheet visible={dialog === 'editContact'} title={t("Изменить контакт")} onClose={close}>
       <ScrollView style={{
         maxHeight: height * 0.45
-      }} keyboardShouldPersistTaps="handled">{fields}</ScrollView>
+      }} keyboardShouldPersistTaps="handled">{editFields}</ScrollView>
       {problem}
       <View style={s.formActions}><ActionButton title={t("Сохранить контакт")} busy={busy} disabled={loading || !!loadError || !name.trim()} onPress={() => save(() => contacts.editContact(inspectedContact, {
           name,

@@ -49,8 +49,8 @@ export const changePassword = (password, newPassword) => request('account/passwo
 export const revokeOtherSessions = password => request('account/sessions/revoke-others', { method: 'POST', body: { password } });
 export const generateRecoveryCode = password => request('account/recovery-code', { method: 'POST', body: { password } });
 export const recoverAccount = body => request('account/recover', { method: 'POST', body });
-export async function deleteAccount(password, confirmation, ownerId) {
-  await request('account/delete', { method: 'POST', body: { password, confirmation } });
+export async function deleteAccount(ownerId) {
+  await request('account/delete', { method: 'POST', body: {} });
   await clearSession();
   await Promise.all([removeLocal(`journey.${ownerId}`), removeLocal(`outbox.${ownerId}`)]);
   if (Platform.OS !== 'web') await SecureStore.deleteItemAsync(`safewalk.background.${ownerId}`);

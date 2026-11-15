@@ -67,7 +67,6 @@ export default function SettingsScreen({
       <PreferenceRow title={t('Разрешения телефона')} value={t('Геопозиция и уведомления')} icon="smartphone" onPress={() => open('permissions')} />
       <PreferenceRow title={t('Данные и приватность')} value={t('История поездок')} icon="lock" last disabled={disabled} onPress={() => open('privacy')} />
     </View>
-    <Text style={s.settingsVersion}>SafeWalk 1.0</Text>
 
     <ModalSheet visible={!!panel} title={t(choice?.title || titles[panel] || '')} onClose={close}>
       {choice && <View>{choice.options.map(value => <Pressable key={value} accessibilityRole="button" accessibilityLabel={panel === 'retentionDays' ? t('{count} дн.', { count: value }) : minutes(value)} accessibilityState={{ selected: value === choice.value, disabled }} disabled={disabled} style={s.menuAction} onPress={() => { choice.change(value); setPanel(choice.parent); }}><Text style={[s.rowTitle, s.flex]}>{panel === 'retentionDays' ? t('{count} дн.', { count: value }) : minutes(value)}</Text>{value === choice.value && <Icon name="check" size={20} color={colors.blue} />}</Pressable>)}</View>}

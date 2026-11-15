@@ -100,10 +100,8 @@ async function createAccountRouter({ database, requireSession, deriveKey, scrypt
     response.json({ code: code.match(/.{1,5}/g).join('-') });
   }));
   router.post('/delete', sensitive, database.handle(async (request, response) => {
-    if (request.body?.confirmation !== 'DELETE') return response.status(400).json({ message: 'Для удаления введите DELETE' });
-    const user = await verify(request, response);
-    if (!user) return;
-    await database.prepare('DELETE FROM users WHERE id = ? AND password_hash = ?').run(user.id, user.password_hash);
+    const removed = await database.prepare('DELETE FROM users WHERE id = ?').run(request.user.id);
+    if (!removed.changes) return response.status(401).json({ message: 'Войдите в аккаунт' });
     response.clearCookie(cookie, cookieOptions);
     response.json({ ok: true });
   }));

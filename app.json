@@ -39,6 +39,7 @@
         }
       ],
       "expo-font",
+      "expo-asset",
       "expo-secure-store",
       "./plugins/with-personal-signing.cjs",
       "expo-notifications",

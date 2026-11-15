@@ -27,8 +27,8 @@ test('account management, session revocation and single-use recovery', async (t)
   assert.equal((await call('login', null, credentials)).status, 401);
   const recovered = (await call('login', null, { ...credentials, password: 'new-password-2026' })).body;
   assert.equal((await call('account/password', recovered.token, { password: 'new-password-2026', newPassword: 'changed-password-2026' })).status, 200);
-  assert.equal((await call('account/delete', recovered.token, { password: 'changed-password-2026', confirmation: 'wrong' })).status, 400);
-  assert.equal((await call('account/delete', recovered.token, { password: 'changed-password-2026', confirmation: 'DELETE' })).status, 200);
+  assert.equal((await call('account/delete', null, {})).status, 401);
+  assert.equal((await call('account/delete', recovered.token, {})).status, 200);
   assert.equal((await call('me', recovered.token)).status, 401);
   const inspect = await inspectDatabase(databasePath);
   assert.equal((await inspect.prepare('SELECT COUNT(*) AS n FROM users').get()).n, 0);

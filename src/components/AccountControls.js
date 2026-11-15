@@ -34,7 +34,7 @@ export default function AccountControls({ user, onUpdateUser, onDeleted }) {
       }
       if (mode === 'sessions') { await auth.revokeOtherSessions(password); setPassword(''); setSessions((await auth.loadSessions()).sessions); setMessage('Остальные сессии завершены'); }
       if (mode === 'recovery') { const result = await auth.generateRecoveryCode(password); setCode(result.code); setPassword(''); }
-      if (mode === 'delete') { await auth.deleteAccount(password, confirmation, user.id); onDeleted(); }
+      if (mode === 'delete') { await auth.deleteAccount(user.id); onDeleted(); }
     } catch (error) { setMessage(error.message); }
     finally { locked.current = false; setBusy(false); }
   }
@@ -50,14 +50,13 @@ export default function AccountControls({ user, onUpdateUser, onDeleted }) {
       {mode === 'name' ? input('Имя', name, setName) : <>
         {mode === 'sessions' && sessions.map(item => <Text key={item.id} style={s.rowSubtitle}>{item.current ? t('Текущая сессия') : t('Другая сессия')} · {item.createdAt ? new Date(item.createdAt).toLocaleString(locale) : t('Дата неизвестна')}</Text>)}
         {mode === 'recovery' && <Text style={s.modalDescription}>{t('Сохраните код вне приложения. Он показывается один раз и позволяет сбросить пароль. Новый код отменяет предыдущий.')}</Text>}
-        {mode === 'delete' && <Text style={s.modalDescription}>{t('Аккаунт, прогулки и сообщения будут удалены без возможности восстановления. Введите пароль и DELETE для подтверждения.')}</Text>}
-        {!code && input('Текущий пароль', password, setPassword, true)}
+        {mode === 'delete' && <Text style={s.modalDescription}>{t('Аккаунт, прогулки и сообщения будут удалены без возможности восстановления. Нажмите кнопку ниже, чтобы подтвердить удаление.')}</Text>}
+        {!code && mode !== 'delete' && input('Текущий пароль', password, setPassword, true)}
         {mode === 'password' && <>{input('Новый пароль', next, setNext, true)}{input('Повторите пароль', confirmation, setConfirmation, true)}</>}
-        {mode === 'delete' && input('Введите DELETE', confirmation, setConfirmation)}
       </>}
       {!!code && <Text selectable style={s.rowTitle}>{code}</Text>}
       {!!message && <Text accessibilityLiveRegion="polite" style={s.modalDescription}>{t(message)}</Text>}
-      {!code && <View style={s.formActions}><ActionButton title={t(mode === 'sessions' ? 'Завершить остальные сессии' : mode === 'delete' ? 'Удалить навсегда' : 'Сохранить')} busy={busy} onPress={submit} /></View>}
+      {!code && <View style={s.formActions}><ActionButton title={t(mode === 'sessions' ? 'Завершить остальные сессии' : mode === 'delete' ? 'Удалить навсегда' : 'Сохранить')} danger={mode === 'delete'} busy={busy} onPress={submit} /></View>}
     </ModalSheet>
   </View>;
 }

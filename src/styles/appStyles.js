@@ -1090,7 +1090,6 @@ export function createAppStyles(colors, fontScale) {
   settingsResetNote: { fontSize: 12, lineHeight: 18, color: colors.muted, marginBottom: 12 },
   settingsFeedback: { flexDirection: 'row', alignItems: 'flex-start', gap: 7, marginTop: 12 },
   settingsFeedbackText: { flex: 1, fontSize: 12, lineHeight: 18, color: colors.success },
-  settingsVersion: { fontSize: 11, color: colors.muted, textAlign: 'center', paddingVertical: 24 },
   appearanceTitle: { color: colors.ink, fontSize: 15, fontWeight: '600', marginTop: 20, marginBottom: 10 },
   appearanceChoices: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
   appearanceChoice: { flexGrow: 1, flexBasis: 90, minHeight: 48, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 7, paddingVertical: 12, paddingHorizontal: 10, backgroundColor: colors.canvas, borderWidth: 1, borderColor: colors.line, borderRadius: 10 },

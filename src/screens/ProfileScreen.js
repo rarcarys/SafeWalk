@@ -22,6 +22,5 @@ export default function ProfileScreen({ user, onUpdateUser, onDeleted, onChooseP
       <PreferenceRow compact title={t('Настройки')} accessibilityLabel={t('Открыть настройки')} icon="settings" onPress={onOpenSettings} />
       <PreferenceRow compact title={t('Выйти из аккаунта')} icon="log-out" danger last onPress={onRequestSignOut} />
     </View>
-    <Text style={s.settingsVersion}>SafeWalk 1.0</Text>
   </View>;
 }
