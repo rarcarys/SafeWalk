@@ -13,7 +13,7 @@ export function apiBase() {
           .hostname;
   return `http://${host}:3001`;
 }
-export async function request(endpoint, { method = 'GET', body, timeout = 10000, signal, expectedOwner } = {}) {
+export async function request(endpoint, { method = 'GET', body, timeout = 10000, signal, expectedOwner, suppressSessionExpired = false } = {}) {
   const controller = new AbortController();
   const abort = () => controller.abort();
   signal?.addEventListener('abort', abort);
@@ -48,7 +48,7 @@ export async function request(endpoint, { method = 'GET', body, timeout = 10000,
     signal?.removeEventListener('abort', abort);
   }
   if (!response.ok) {
-    if (response.status === 401 && !['login', 'register'].includes(endpoint)) sessionExpired();
+    if (response.status === 401 && !suppressSessionExpired && !['login', 'register'].includes(endpoint)) sessionExpired();
     const error = new Error(result.message || 'Не удалось выполнить запрос');
     error.status = response.status;
     error.fields = result.fields;

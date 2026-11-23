@@ -15,3 +15,4 @@ export const updatePosition = (id, position) => request(`journeys/${encodeURICom
 export const acknowledgeJourney = id => request(`journeys/${encodeURIComponent(id)}/acknowledge`, { method: 'POST', body: {} });
 export const respondJourney = (id, decision) => request(`journeys/${encodeURIComponent(id)}/respond`, { method: 'POST', body: { decision } });
 export const sendSOS = body => request('journeys/sos/send', { method: 'POST', body });
+export const uploadSOSEvidence = body => request('journeys/sos/evidence', { method: 'POST', body });

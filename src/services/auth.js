@@ -9,7 +9,7 @@ export async function restoreSession() {
   if (Platform.OS !== 'web')
     setSessionToken(await SecureStore.getItemAsync(STORAGE_KEY));
   try {
-    return (await request('me')).user;
+    return (await request('me', { suppressSessionExpired: true })).user;
   } catch (error) {
     if (error.status !== 401) throw error;
     if (Platform.OS !== 'web') await SecureStore.deleteItemAsync(STORAGE_KEY);

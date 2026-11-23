@@ -3,7 +3,7 @@ const assert = require('node:assert/strict');
 const { chromium } = require('@playwright/test');
 const { fixture } = require('../server/test-support.cjs');
 
-test('SOS includes GPS by default, home uses GPS and confirmed arrival finishes the trip', { timeout: 120000 }, async t => {
+test('SOS works without a route and includes GPS by default; home uses GPS and confirmed arrival finishes the trip', { timeout: 120000 }, async t => {
   const { call, user, base } = await fixture(t);
   const owner = await user('trip-features-owner'), peer = await user('trip-features-peer');
   const added = await call('circle/contacts', owner.token, { email: peer.user.email });
@@ -37,13 +37,20 @@ test('SOS includes GPS by default, home uses GPS and confirmed arrival finishes 
   await page.getByLabel('Пароль', { exact: true }).fill('test-password-2026');
   await page.getByRole('button', { name: 'Войти', exact: true }).click();
   await page.getByRole('button', { name: 'Открыть SOS', exact: true }).click();
+  assert.equal(routed, 0);
+  assert.equal(await page.getByRole('button', { name: 'Отправить SOS', exact: true }).isEnabled(), true);
+  assert.equal(await page.getByRole('button', { name: 'Отправить всем контактам', exact: true }).getAttribute('aria-pressed'), 'true');
   assert.equal(await page.getByRole('checkbox', { name: 'Тестовый режим SOS', exact: true }).count(), 0);
   await page.getByRole('button', { name: 'Закрыть', exact: true }).last().click();
+  await page.getByRole('tab', { name: 'Настройки', exact: true }).click();
+  assert.equal(await page.getByRole('switch', { name: 'Делиться геопозицией', exact: true }).isChecked(), true);
+  await page.getByRole('tab', { name: 'Карта', exact: true }).click();
   assert.equal(sent, 0);
   await page.getByRole('button', { name: 'Открыть SOS', exact: true }).click();
   await page.getByRole('button', { name: 'Отправить SOS', exact: true }).click();
   await page.getByText('SOS добавлен в чаты:', { exact: false }).waitFor();
   assert.equal(sent, 1);
+  assert.equal(routed, 0);
   await page.getByRole('button', { name: 'Быстрый маршрут домой', exact: true }).click();
   await page.getByRole('button', { name: 'Построить маршрут домой', exact: true }).click();
   await page.getByRole('button', { name: 'Начать с сопровождением', exact: true }).waitFor();

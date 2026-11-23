@@ -1,11 +1,21 @@
 import { useSettings } from '../../context/SettingsContext';
 import { avatarPalette } from '../../data/contacts';
-import { View, Text, Image, Pressable, Modal, useWindowDimensions } from 'react-native';
+import { View, Text, Image, Platform, Pressable, Modal, StyleSheet, useWindowDimensions } from 'react-native';
 import IconButton from './IconButton';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Icon from './Icon';
 import presets from '../../data/avatars.json';
 import React, { useState } from 'react';
+function PhotoImage({ uri, label, onError, resizeMode, style }) {
+  if (Platform.OS === 'web') return React.createElement('img', {
+    src: uri,
+    alt: label || '',
+    'aria-label': label,
+    onError,
+    style: { ...StyleSheet.flatten(style), objectFit: resizeMode === 'contain' ? 'contain' : 'cover' }
+  });
+  return <Image source={{ uri }} accessibilityRole="image" accessibilityLabel={label} onError={onError} style={style} resizeMode={resizeMode} />;
+}
 export default function Avatar({
   person,
   small,
@@ -29,7 +39,7 @@ export default function Avatar({
   const thumbnail = <View style={[s.avatar, small && s.smallAvatar, large && s.largeAvatar, {
     backgroundColor: preset?.background || data.background || '#e1e9ec', overflow: 'hidden'
   }]}>
-      {photo ? <Image source={{ uri: data.avatar }} accessibilityLabel={data.name} onError={() => setFailedPhoto(data.avatar)} style={{ position: 'absolute', top: 0, left: 0, width: '100%', height: '100%' }} resizeMode="cover" /> : preset ? <Icon name={preset.icon} size={large ? 32 : small ? 17 : 23} color={preset.color} /> : <Text style={[s.avatarLetter, large && {
+      {photo ? <PhotoImage uri={data.avatar} label={data.name} onError={() => setFailedPhoto(data.avatar)} style={{ position: 'absolute', top: 0, left: 0, width: '100%', height: '100%' }} resizeMode="cover" /> : preset ? <Icon name={preset.icon} size={large ? 32 : small ? 17 : 23} color={preset.color} /> : <Text style={[s.avatarLetter, large && {
       fontSize: 27 * fontScale
     }, {
       color: data.foreground || '#4c707e'
@@ -45,7 +55,7 @@ export default function Avatar({
         <Pressable accessibilityRole="button" accessibilityLabel={t('Закрыть просмотр аватара')} onPress={() => setViewing(false)} style={{ position: 'absolute', top: 0, right: 0, bottom: 0, left: 0 }} />
         <View style={{ position: 'absolute', right: 16, top: insets.top + 12 }}><IconButton icon="x" color="#ffffff" label={t('Закрыть просмотр аватара')} onPress={() => setViewing(false)} /></View>
         <View style={{ width: size, height: size, borderRadius: 24, overflow: 'hidden', backgroundColor: preset?.background || '#e1e9ec', alignItems: 'center', justifyContent: 'center' }}>
-          {photo ? <Image source={{ uri: data.avatar }} accessibilityLabel={t('Аватар крупным планом')} resizeMode="contain" style={{ width: size, height: size }} /> : <Icon name={preset.icon} size={size * 0.48} color={preset.color} />}
+          {photo ? <PhotoImage uri={data.avatar} label={t('Аватар крупным планом')} resizeMode="contain" style={{ width: size, height: size }} /> : <Icon name={preset.icon} size={size * 0.48} color={preset.color} />}
         </View>
         {!!data.name && <Text style={{ color: '#ffffff', fontSize: 16, marginTop: 20, paddingHorizontal: 24, textAlign: 'center' }}>{data.name}</Text>}
       </View>

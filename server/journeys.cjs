@@ -45,6 +45,14 @@ async function createJourneyService(database, now = Date.now) {
       PRIMARY KEY(owner_id, client_id, peer_id),
       FOREIGN KEY(owner_id, client_id) REFERENCES sos_events(owner_id, client_id) ON DELETE CASCADE
     );
+    CREATE TABLE IF NOT EXISTS sos_evidence (
+      owner_id TEXT NOT NULL, client_id TEXT NOT NULL,
+      audio_base64 TEXT NOT NULL, mime_type TEXT NOT NULL,
+      captured_at INTEGER NOT NULL, latitude REAL, longitude REAL,
+      expires_at INTEGER NOT NULL,
+      PRIMARY KEY(owner_id, client_id),
+      FOREIGN KEY(owner_id, client_id) REFERENCES sos_events(owner_id, client_id) ON DELETE CASCADE
+    );
   `);
   if (!(await database.prepare('PRAGMA table_info(journey_recipients)').all()).some((column) => column.name === 'consent')) {
     await database.exec("ALTER TABLE journey_recipients ADD COLUMN consent TEXT NOT NULL DEFAULT 'pending'");
@@ -342,11 +350,14 @@ async function createJourneyService(database, now = Date.now) {
   router.post('/sos/send', database.handle(async (request, response) => {
     const body = request.body || {};
     if (body.note !== undefined && (typeof body.note !== 'string' || body.note.length > 280)) return response.status(400).json({ message: 'Послание SOS — не более 280 символов' });
+    if (body.recipientIds !== undefined && (!Array.isArray(body.recipientIds) || !body.recipientIds.length || body.recipientIds.length > 100 || new Set(body.recipientIds).size !== body.recipientIds.length || body.recipientIds.some(id => typeof id !== 'string'))) return response.status(400).json({ message: 'Выберите получателей SOS' });
     const note = (body.note || '').trim();
     if (!keyValid(body.clientId) || typeof body.includeLocation !== 'boolean' || body.includeLocation && !positionValid(body.position)) return response.status(400).json({ message: 'Проверьте получателей и геопозицию SOS' });
     const previous = await database.prepare('SELECT payload FROM sos_events WHERE owner_id = ? AND client_id = ?').get(request.user.id, body.clientId);
     if (previous) return response.json(JSON.parse(previous.payload));
-    const selected = await database.prepare(`SELECT peer_id, name, CASE WHEN id = (SELECT primary_id FROM circle_settings WHERE owner_id = circle_contacts.owner_id) THEN 'primary' ELSE 'backup' END AS role FROM circle_contacts WHERE owner_id = ? AND (backup = 1 OR id = (SELECT primary_id FROM circle_settings WHERE owner_id = ?))`).all(request.user.id, request.user.id);
+    const selected = body.recipientIds ? await database.prepare(`SELECT id, peer_id, name, CASE WHEN id = (SELECT primary_id FROM circle_settings WHERE owner_id = circle_contacts.owner_id) THEN 'primary' ELSE 'backup' END AS role FROM circle_contacts WHERE owner_id = ? AND id IN (${body.recipientIds.map(() => '?').join(', ')})`).all(request.user.id, ...body.recipientIds)
+      : await database.prepare(`SELECT id, peer_id, name, CASE WHEN id = (SELECT primary_id FROM circle_settings WHERE owner_id = circle_contacts.owner_id) THEN 'primary' ELSE 'backup' END AS role FROM circle_contacts WHERE owner_id = ? AND (backup = 1 OR id = (SELECT primary_id FROM circle_settings WHERE owner_id = ?))`).all(request.user.id, request.user.id);
+    if (body.recipientIds && selected.length !== body.recipientIds.length) return response.status(400).json({ message: 'Выберите получателей из своих контактов' });
     const peers = await filterAsync(selected, async (contact) => contact.peer_id && (await accepted(database, request.user.id, contact.peer_id)));
     if (!peers.length) return response.status(400).json({ message: 'Добавьте хотя бы один контакт с аккаунтом SafeWalk. Для телефонных контактов используйте звонок.' });
     let text = `SOS от ${request.user.name}. Пожалуйста, свяжитесь со мной — мне нужна помощь.`;
@@ -359,6 +370,11 @@ async function createJourneyService(database, now = Date.now) {
     const result = { sentCount: peers.length, skippedNames: selected.filter((contact) => !peers.includes(contact)).map((contact) => contact.name), includedLocation: body.includeLocation, note,
       position: body.includeLocation ? { latitude: body.position.latitude, longitude: body.position.longitude, accuracy: body.position.accuracy ?? null, capturedAt: body.position.capturedAt ?? now() } : null };
     await transaction(async () => {
+      if (body.includeLocation) {
+        await database.prepare('INSERT OR IGNORE INTO preferences (owner_id) VALUES (?)').run(request.user.id);
+        await database.prepare('UPDATE preferences SET sharing = 1 WHERE owner_id = ?').run(request.user.id);
+        await database.prepare("UPDATE journeys SET sharing = 1 WHERE owner_id = ? AND status = 'active'").run(request.user.id);
+      }
       await database.prepare('INSERT INTO sos_events (owner_id, client_id, payload, created_at) VALUES (?, ?, ?, ?)').run(request.user.id, body.clientId, JSON.stringify(result), now());
       for (const peer of peers) {
         const key = `sos_${body.clientId}_${peer.peer_id}`;
@@ -368,6 +384,45 @@ async function createJourneyService(database, now = Date.now) {
       }
     });
     response.status(201).json(result);
+  }));
+  router.post('/sos/evidence', database.handle(async (request, response) => {
+    const body = request.body || {};
+    const allowedTypes = new Set(['audio/mp4', 'audio/m4a', 'audio/aac', 'audio/webm', 'audio/3gpp']);
+    if (!keyValid(body.clientId) || !allowedTypes.has(body.mimeType) || typeof body.audioBase64 !== 'string' || !/^[A-Za-z0-9+/]+={0,2}$/.test(body.audioBase64)) {
+      return response.status(400).json({ message: 'Некорректная аудиозапись SOS' });
+    }
+    const audio = Buffer.from(body.audioBase64, 'base64');
+    if (!audio.length || audio.length > 512 * 1024) return response.status(413).json({ message: 'Аудиозапись SOS слишком большая' });
+    const capturedAt = body.capturedAt ?? now();
+    if (!Number.isFinite(capturedAt) || capturedAt < now() - 10 * 60000 || capturedAt > now() + 30000) return response.status(400).json({ message: 'Время записи SOS некорректно' });
+    const location = body.location == null ? null : body.location;
+    if (location && !pointValid(location)) return response.status(400).json({ message: 'Координаты записи SOS некорректны' });
+    const event = await database.prepare('SELECT created_at FROM sos_events WHERE owner_id = ? AND client_id = ?').get(request.user.id, body.clientId);
+    if (!event) return response.status(404).json({ message: 'Сначала отправьте SOS' });
+    const expiresAt = event.created_at + 7 * 24 * 60 * 60 * 1000;
+    await database.prepare(`INSERT INTO sos_evidence(owner_id, client_id, audio_base64, mime_type, captured_at, latitude, longitude, expires_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+      ON CONFLICT(owner_id, client_id) DO UPDATE SET audio_base64 = excluded.audio_base64, mime_type = excluded.mime_type,
+      captured_at = excluded.captured_at, latitude = excluded.latitude, longitude = excluded.longitude, expires_at = excluded.expires_at`)
+      .run(request.user.id, body.clientId, body.audioBase64, body.mimeType, capturedAt, location?.latitude ?? null, location?.longitude ?? null, expiresAt);
+    response.status(201).json({ ok: true, capturedAt, expiresAt });
+  }));
+  router.get('/sos/:owner/:client/evidence', database.handle(async (request, response) => {
+    const { owner, client } = request.params;
+    if (!keyValid(client)) return response.status(404).json({ message: 'Запись SOS не найдена' });
+    await database.prepare('DELETE FROM sos_evidence WHERE expires_at <= ?').run(now());
+    const canRead = owner === request.user.id || await database.prepare('SELECT 1 FROM sos_recipients WHERE owner_id = ? AND client_id = ? AND peer_id = ?').get(owner, client, request.user.id);
+    if (!canRead) return response.status(404).json({ message: 'Запись SOS не найдена' });
+    const row = await database.prepare(`SELECT audio_base64 AS audioBase64, mime_type AS mimeType, captured_at AS capturedAt,
+      latitude, longitude, expires_at AS expiresAt FROM sos_evidence WHERE owner_id = ? AND client_id = ?`).get(owner, client);
+    if (!row) return response.status(404).json({ message: 'Запись SOS не найдена' });
+    response.json({ evidence: { ...row, location: row.latitude == null ? null : { latitude: row.latitude, longitude: row.longitude } } });
+  }));
+  router.delete('/sos/:client/evidence', database.handle(async (request, response) => {
+    if (!keyValid(request.params.client)) return response.status(404).json({ message: 'Запись SOS не найдена' });
+    const result = await database.prepare('DELETE FROM sos_evidence WHERE owner_id = ? AND client_id = ?').run(request.user.id, request.params.client);
+    if (!result.changes) return response.status(404).json({ message: 'Запись SOS не найдена' });
+    response.json({ ok: true });
   }));
   router.get('/sos/:owner/:client', database.handle(async (request, response) => {
     const { owner, client } = request.params;

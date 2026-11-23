@@ -5,7 +5,6 @@ import Avatar from '../components/ui/Avatar';
 import Icon from '../components/ui/Icon';
 import ActionButton from '../components/ui/ActionButton';
 import React, { useState } from 'react';
-import ContactPresence from '../components/ContactPresence';
 export default function ContactsScreen({
   contacts,
   onAddContact,
@@ -33,7 +32,6 @@ export default function ContactsScreen({
         <IconButton icon="user-plus" label={t("Добавить контакт")} onPress={onAddContact} />
 
       </View>
-      <Text style={s.pageDescription}>{t("Контакты для сопровождения и SOS")}</Text>
       {!!actionError && <Text role="alert" style={s.mapError}>{t(actionError)}</Text>}
       {!!contacts.invitations.length && <View style={s.invitationHeading}><Text style={s.groupLabel}>{t('Приглашает в контакты')}</Text><View style={s.invitationCount}><Text style={s.invitationCountText}>{contacts.invitations.length}</Text></View></View>}
       {contacts.invitations.map(item => <View key={item.peerId} style={s.invitationCard}>
@@ -52,8 +50,7 @@ export default function ContactsScreen({
       {!!error && <><Text accessibilityRole="alert" style={s.mapError}>{t(error)}</Text><ActionButton title={t("Повторить загрузку")} secondary onPress={reload} /></>}
       {!loading && !error && !Object.keys(people).length && <View style={s.emptyCard}>
         <Icon name="users" size={32} color={colors.blue} />
-        <Text style={s.cardTitle}>{t("Соберите свой круг")}</Text>
-        <Text style={s.rowSubtitle}>{t("Добавьте человека по email SafeWalk для чата и сопровождения или сохраните телефон для быстрого звонка.")}</Text>
+        <Text style={s.cardTitle}>{t("Пока никого нет")}</Text>
         <ActionButton title={t("Добавить контакт")} icon="user-plus" onPress={onAddContact} />
       </View>}
       <View style={s.peopleList}>
@@ -64,30 +61,11 @@ export default function ContactsScreen({
             <Avatar person={people[id]} />
             <View style={s.flex}>
               <Text style={s.personName}>{people[id].name}</Text>
-              <ContactPresence presence={people[id].presence} />
-              <Text style={s.rowSubtitle}>{[people[id].relation, people[id].peerId ? t(({ accepted: 'В SafeWalk', pending: 'Ожидает принятия', declined: 'Приглашение отклонено', blocked: 'Заблокирован' })[people[id].connectionStatus] || 'Ожидает принятия') : people[id].phone].filter(Boolean).join(' · ')}</Text>
+              <Text style={s.rowSubtitle}>{contact === id ? t('Основной для SOS') : backupIds.includes(id) ? t('Получает SOS') : people[id].peerId ? t(({ accepted: 'В SafeWalk', pending: 'Ожидает принятия', declined: 'Приглашение отклонено', blocked: 'Заблокирован' })[people[id].connectionStatus] || 'Ожидает принятия') : t('Только звонок')}</Text>
             </View>
-            {contact === id && <Text style={s.primaryContactLabel}>{t("Основной")}</Text>}
-            {backupIds.includes(id) && <Text style={s.backupContactLabel}>{t("Резервный")}</Text>}
             <Icon name="chevron-right" size={18} color={colors.muted} />
           </Pressable>)}
       </View>
-      {!!Object.keys(people).length && <ActionButton title={t("Резервные контакты · {value0}", {
-      value0: backupIds.length
-    })} icon="users" secondary onPress={onChooseContacts} />}
-      <Text style={s.listFootnote}>{t("Сообщения при задержке приходят в чаты SafeWalk. Телефонные контакты доступны для звонка вручную.")}
-
-      </Text>
-      <Text style={[s.groupLabel, {
-      marginTop: 35
-    }]}>{t("ДОСТУП К ГЕОПОЗИЦИИ")}
-
-
-      </Text>
-      <View style={s.simpleRow}>
-        <Icon name="map-pin" size={18} color={colors.muted} />
-        <Text style={[s.rowTitle, s.flex]}>{t("Только во время маршрута")}</Text>
-        <Icon name="check" size={18} />
-      </View>
+      {!!Object.keys(people).length && <ActionButton title={t('Настроить SOS')} icon="users" secondary onPress={onChooseContacts} />}
     </View>;
 }

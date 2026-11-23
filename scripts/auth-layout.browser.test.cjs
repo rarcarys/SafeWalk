@@ -9,8 +9,7 @@ test('compact auth layout keeps login, recovery and registration usable across s
   const page=await context.newPage(),errors=[];page.on('pageerror',e=>errors.push(e.message));
   await page.route('**/api/auth/me',route=>route.fulfill({status:401,json:{message:'Войдите снова'}}));
   await page.goto('http://localhost:8081');
-  await page.getByRole('dialog').waitFor();
-  await page.getByRole('button',{name:'Войти',exact:true}).last().click();
+  await page.getByRole('tab',{name:'Вход',exact:true}).waitFor();
   await expect(page.getByRole('tab',{name:'Вход',exact:true})).toHaveAttribute('aria-selected','true');
   await expect(page.getByTestId('firefly-idle')).toHaveAttribute('data-ready','ready',{timeout:30000});
   await expect(page.getByTestId('firefly-canvas')).toHaveCount(1);

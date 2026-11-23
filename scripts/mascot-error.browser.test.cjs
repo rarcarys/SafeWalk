@@ -5,8 +5,7 @@ test('invalid credentials surprise the stoat with upright ears, and editing clea
  const page=await browser.newPage({viewport:{width:1440,height:900},reducedMotion:'no-preference'});
  await page.route('**/api/auth/me',r=>r.fulfill({status:401,json:{message:'Войдите снова'}}));
  await page.route('**/api/auth/login',r=>r.fulfill({status:401,json:{message:'Неверный email или пароль'}}));
- await page.goto('http://localhost:8081');await page.getByRole('dialog').waitFor();
- await page.getByRole('button',{name:'Войти',exact:true}).last().click();
+ await page.goto('http://localhost:8081');await page.getByRole('tab',{name:'Вход',exact:true}).waitFor();
  const canvas=page.getByTestId('firefly-canvas');
  await expect(page.getByTestId('firefly-idle')).toHaveAttribute('data-ready','ready');
  await page.getByLabel('Email',{exact:true}).fill('walker@example.com');

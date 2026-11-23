@@ -27,6 +27,7 @@ import useSOSAlerts from './hooks/useSOSAlerts';
 import SOSAlert from './components/SOSAlert';
 import SOSDetails from './components/SOSDetails';
 import { request } from './services/api';
+import { requestInitialLocationPermission } from './services/location';
 export default function SafeWalk({
   user,
   onUpdateUser,
@@ -69,6 +70,9 @@ export default function SafeWalk({
   const [selectedSOS, setSelectedSOS] = useState(null);
   const sharedJourney = account.received.find(item => item.id === selectedJourney);
   useActionSOS({ ownerId: user.id, account, notify: notifications.notify, setDialog, t });
+  useEffect(() => {
+    requestInitialLocationPermission(user.id).catch(() => {});
+  }, [user.id]);
   useEffect(() => listenNotification(data => {
     if (data.ownerId && data.ownerId !== user.id) return;
     if (data.safetyTimer) { safety.refresh(); setDialog('safetyCheckin'); }
@@ -109,7 +113,7 @@ export default function SafeWalk({
       <View style={s.shell}>
         {desktop && <Sidebar page={page} go={go} user={user} unreadCount={account.unreadCount} />}
         <View style={s.main}>
-          <AppHeader desktop={desktop} origin={planning.origin} onOpenSOS={() => setDialog('sos')} onOpenProfile={() => go('profile')} />
+          <AppHeader desktop={desktop} origin={planning.origin} onOpenSOS={() => { account.activateSOSLocation(); setDialog('sos'); }} onOpenProfile={() => go('profile')} />
           <TripConnectionStatus trip={trip} connected={connected} contacts={contacts} />
           {!connected && <View style={s.accountNotice}><Text accessibilityLiveRegion="polite" style={s.accountNoticeText}>{t('Связь с сервером восстанавливается. Данные могут быть устаревшими.')}</Text></View>}
           {account.active?.status === 'pending' && <View style={s.accountNotice}><Text style={s.accountNoticeText}>{t('Ожидаем согласия основного сопровождающего. Прогулка ещё не началась.')}</Text><IconButton icon="navigation" label={t('Маршруты')} onPress={() => go('route')} /></View>}

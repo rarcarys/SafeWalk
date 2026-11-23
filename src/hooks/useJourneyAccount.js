@@ -102,6 +102,15 @@ export default function useJourneyAccount(ownerId, outbox) {
     busy,
     refresh,
     clearHistory: () => change(api.clearHistory, current => ({ ...current, history: [] })),
+    activateSOSLocation: () => {
+      version.current++;
+      setData(current => ({
+        ...current,
+        preferences: { ...current.preferences, sharing: true },
+        active: current.active ? { ...current.active, sharing: true } : null
+      }));
+      api.savePreferences({ sharing: true }).catch(() => {});
+    },
     respondJourney: (id, decision) => change(() => api.respondJourney(id, decision)).then(refresh),
     acknowledgeSOS: (ownerId, clientId) => change(() => outbox.run(`journeys/sos/${encodeURIComponent(ownerId)}/${encodeURIComponent(clientId)}/acknowledge`, { clientId: `ack_${clientId}` }, 'Подтверждение SOS')).then(refresh),
     setPreference: (key, value) => change(() => api.savePreferences({
@@ -149,6 +158,13 @@ export default function useJourneyAccount(ownerId, outbox) {
         acknowledgedAt: Date.now()
       } : item)
     })),
-    sendSOS: body => change(() => outbox.run('journeys/sos/send', body, 'SOS'))
+    sendSOS: body => {
+      if (body.includeLocation) setData(current => ({
+        ...current,
+        preferences: { ...current.preferences, sharing: true },
+        active: current.active ? { ...current.active, sharing: true } : null
+      }));
+      return change(() => outbox.run('journeys/sos/send', body, 'SOS'), current => current);
+    }
   };
 }

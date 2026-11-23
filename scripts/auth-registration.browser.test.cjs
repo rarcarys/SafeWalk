@@ -13,8 +13,7 @@ test('registration validates credentials first, preserves back navigation and su
    if(submissions.length===1)return route.fulfill({status:409,json:{message:'Этот email уже зарегистрирован.',fields:{email:'Email уже зарегистрирован'}}});
    return route.fulfill({status:201,json:{user:{id:'registration-preview-user',name:body.name,email:body.email}}});
   });
-  await page.goto('http://localhost:8081');await page.getByRole('dialog').waitFor();
-  await page.getByRole('button',{name:'Войти',exact:true}).last().click();
+  await page.goto('http://localhost:8081');await page.getByRole('tab',{name:'Вход',exact:true}).waitFor();
   await page.getByRole('tab',{name:'Регистрация',exact:true}).click();
   await expect(page.getByLabel('Имя',{exact:true})).toHaveCount(0);
   await expect(page.getByLabel('Повторите пароль',{exact:true})).toHaveCount(0);

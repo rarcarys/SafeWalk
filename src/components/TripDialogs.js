@@ -7,7 +7,9 @@ import IconButton from './ui/IconButton';
 import Icon from './ui/Icon';
 import MapCanvas from './maps/MapCanvas';
 import { getCurrentLocation, openLocationSettings } from '../services/location';
-import { actionKey } from '../services/journeys';
+import { actionKey, uploadSOSEvidence } from '../services/journeys';
+import { File } from 'expo-file-system';
+import { RecordingPresets, requestRecordingPermissionsAsync, setAudioModeAsync, useAudioRecorder } from 'expo-audio';
 import JourneyReadiness from './JourneyReadiness';
 import PlaceEditor from './PlaceEditor';
 import { transports, transportLabel } from '../data/transports';
@@ -38,23 +40,34 @@ export default function TripDialogs({
   const [locationPrompt, setLocationPrompt] = useState(null);
   const sosSending = useRef(false);
   const [sosNote, setSosNote] = useState('');
+  const [sosRecipientIds, setSosRecipientIds] = useState([]);
+  const [recordEvidence, setRecordEvidence] = useState(false);
+  const evidenceRecorder = useAudioRecorder(RecordingPresets.LOW_QUALITY);
   const [error, setError] = useState('');
   const [editingPlaces, setEditingPlaces] = useState(false);
   const [saveKind, setSaveKind] = useState('place');
   const [placeToDelete, setPlaceToDelete] = useState(null);
   const pendingSOS = useRef(null);
-  const recipients = [contacts.contact, ...contacts.backupIds].map(id => contacts.people[id]).filter(Boolean);
+  const sosContacts = Object.entries(contacts.people).filter(([, person]) => person.peerId && person.connectionStatus === 'accepted');
+  const sosContactKey = sosContacts.map(([id]) => id).join('|');
+  const recipients = sosRecipientIds.map(id => contacts.people[id]).filter(Boolean);
   const busy = sosBusy || account.busy;
   useEffect(() => {
     setError('');
+    if (dialog === 'saveAddress') setSaveKind('place');
     if (dialog === 'places') setEditingPlaces(false);
     if (dialog === 'sos') {
       setLocationUnavailable(false);
       setLocationPrompt(null);
       setSosNote('');
+      setSosRecipientIds(Object.entries(contacts.people).filter(([, person]) => person.peerId && person.connectionStatus === 'accepted').map(([id]) => id));
+      setRecordEvidence(false);
       pendingSOS.current = null;
     }
   }, [dialog]);
+  useEffect(() => {
+    if (dialog === 'sos' && !sosRecipientIds.length && sosContacts.length) setSosRecipientIds(sosContacts.map(([id]) => id));
+  }, [dialog, sosContactKey]);
   const close = () => {
     if (!busy) setDialog(null);
   };
@@ -90,10 +103,42 @@ export default function TripDialogs({
       const result = await account.sendSOS({
         clientId: pendingSOS.current,
         includeLocation,
+        recipientIds: sosRecipientIds,
         note: sosNote.trim(),
         position: point ? { ...point, capturedAt: point.capturedAt ?? point.updatedAt ?? Date.now() } : undefined
       });
       if (result.queued) { setDialog(null); notify(t('SOS ожидает отправки. Сервер ещё не получил тревогу. Если нужна помощь, позвоните контакту.')); return; }
+      if (recordEvidence && Platform.OS !== 'web') {
+        const clientId = pendingSOS.current;
+        const location = point ? { latitude: point.latitude, longitude: point.longitude } : null;
+        void (async () => {
+          let audioFile;
+          try {
+            await setAudioModeAsync({ allowsRecording: true, playsInSilentMode: true });
+            await evidenceRecorder.prepareToRecordAsync();
+            const capturedAt = Date.now();
+            evidenceRecorder.record();
+            await new Promise(resolve => setTimeout(resolve, 15000));
+            await evidenceRecorder.stop();
+            if (!evidenceRecorder.uri) throw new Error('Запись не создана');
+            audioFile = new File(evidenceRecorder.uri);
+            const audioBase64 = await audioFile.base64();
+            await uploadSOSEvidence({
+              clientId,
+              audioBase64,
+              mimeType: Platform.OS === 'android' ? 'audio/3gpp' : 'audio/mp4',
+              capturedAt,
+              location
+            });
+            notify(t('Запись SOS сохранена на 7 дней'));
+          } catch {
+            notify(t('SOS отправлен, но аудиозапись сохранить не удалось'));
+          } finally {
+            try { audioFile?.delete(); } catch {}
+            await setAudioModeAsync({ allowsRecording: false }).catch(() => {});
+          }
+        })();
+      }
       setDialog(null);
       notify(t("SOS добавлен в чаты: {value0}.{value1}", {
         value0: result.sentCount,
@@ -124,7 +169,7 @@ export default function TripDialogs({
       <Pressable accessibilityRole="button" accessibilityLabel={t('Возможности безопасности')} style={s.menuAction} onPress={() => setDialog('safetyTools')}><Icon name="shield" size={21} color={colors.ink} /><Text style={[s.rowTitle, s.flex]}>{t('Возможности безопасности')}</Text><Icon name="chevron-right" size={17} color={colors.muted} /></Pressable>
       {[['map-pin', 'Сохранить адрес', () => { setSaveKind('place'); setDialog('saveDestination'); }], ...(planning.route ? [['navigation', 'Сохранить маршрут', () => { setSaveKind('route'); setDialog('saveDestination'); }]] : [])].map(([icon, label, action]) => <Pressable key={label} accessibilityRole="button" accessibilityLabel={t(label)} disabled={busy} onPress={action} style={s.menuAction}><Icon name={icon} size={21} color={colors.ink} /><Text style={s.rowTitle}>{t(label)}</Text><View style={s.flex} /><Icon name="chevron-right" size={17} color={colors.muted} /></Pressable>)}
     </ModalSheet>
-    <ModalSheet visible={dialog === 'saveDestination'} title={t(saveKind === 'route' ? 'Сохранить маршрут' : 'Сохранить адрес')} onClose={close}>
+    <ModalSheet visible={dialog === 'saveDestination' || dialog === 'saveAddress'} title={t(saveKind === 'route' ? 'Сохранить маршрут' : 'Сохранить адрес')} onClose={close}>
       <Text style={s.modalDescription}>{planning.target?.name}</Text>
       {['home', 'work', 'study'].map(slot => <Pressable key={slot} accessibilityRole="button" accessibilityLabel={t('Сохранить: {place}', { place: t(({ home: 'Дом', work: 'Работа', study: 'Учёба' })[slot]) })} disabled={busy} onPress={() => saveToSlot(slot)} style={s.menuAction}><Icon name={slot === 'home' ? 'home' : slot === 'work' ? 'briefcase' : 'book-open'} size={21} color={colors.ink} /><View style={s.flex}><Text style={s.rowTitle}>{t(({ home: 'Дом', work: 'Работа', study: 'Учёба' })[slot])}</Text><Text style={s.rowSubtitle}>{(saveKind === 'route' ? account.favoriteRoutes : account.places)?.some(item => item.slot === slot) ? t('Заменить сохранённое') : t('Добавить')}</Text></View><Icon name="chevron-right" size={17} color={colors.muted} /></Pressable>)}
       {fail}
@@ -197,15 +242,34 @@ export default function TripDialogs({
         <ActionButton title={t('Отправить без геопозиции')} secondary busy={busy} onPress={() => send(false)} />
         {fail}
       </> : <>
-      <Text style={s.modalDescription}>{t('Ваши контакты получат тревогу и местоположение.')}</Text>
-      <View style={s.sosDefaultLocation}><Icon name="map-pin" size={17} color={colors.blue} /><Text style={s.rowSubtitle}>{t('Геопозиция добавляется автоматически')}</Text></View>
-      <TextInput accessibilityLabel={t('Послание SOS')} placeholder={t('Что случилось? Необязательно')} placeholderTextColor={colors.muted} style={s.contactInput} value={sosNote} onChangeText={setSosNote} maxLength={280} editable={!busy} />
+      <View style={s.sosDefaultLocation}><Icon name="map-pin" size={17} color={colors.blue} /><Text style={s.rowSubtitle}>{t('Геопозиция включена')}</Text></View>
+      {!!sosContacts.length && <>
+        <Text style={s.rowSubtitle}>{t('Кому отправить SOS')}</Text>
+        <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginVertical: 10 }}>
+          <Pressable accessibilityRole="button" accessibilityLabel={t('Отправить всем контактам')} aria-pressed={sosRecipientIds.length === sosContacts.length} disabled={busy} onPress={() => setSosRecipientIds(sosContacts.map(([id]) => id))} style={[s.sosQuickNote, sosRecipientIds.length === sosContacts.length && s.checkboxSelected]}>
+            <Text style={sosRecipientIds.length === sosContacts.length ? { color: colors.white } : s.blueText}>{t('Всем')}</Text>
+          </Pressable>
+          {sosContacts.map(([id, person]) => <Pressable key={id} accessibilityRole="button" accessibilityLabel={t('Получатель SOS: {name}', { name: person.name })} aria-pressed={sosRecipientIds.length === 1 && sosRecipientIds[0] === id} disabled={busy} onPress={() => setSosRecipientIds([id])} style={[s.sosQuickNote, sosRecipientIds.length === 1 && sosRecipientIds[0] === id && s.checkboxSelected]}>
+            <Text style={sosRecipientIds.length === 1 && sosRecipientIds[0] === id ? { color: colors.white } : s.blueText}>{person.name}</Text>
+          </Pressable>)}
+        </View>
+      </>}
+      <TextInput accessibilityLabel={t('Послание SOS')} placeholder={t('Короткое сообщение (необязательно)')} placeholderTextColor={colors.muted} style={s.contactInput} value={sosNote} onChangeText={setSosNote} maxLength={280} editable={!busy} />
+      {Platform.OS !== 'web' && <Pressable accessibilityRole="checkbox" accessibilityLabel={t('Записать аудио · 15 сек')} aria-checked={recordEvidence} disabled={busy} onPress={async () => {
+        if (recordEvidence) { setRecordEvidence(false); return; }
+        const permission = await requestRecordingPermissionsAsync();
+        if (permission.granted) setRecordEvidence(true);
+        else setError(t('Разрешите доступ к микрофону, чтобы записать доказательство'));
+      }} style={s.startCompanionRow}>
+        <Icon name="mic" size={20} color={colors.blue} />
+        <View style={s.flex}><Text style={s.rowTitle}>{t('Записать аудио · 15 сек')}</Text></View>
+        <View style={[s.checkbox, recordEvidence && s.checkboxSelected]}>{recordEvidence && <Icon name="check" size={15} color={colors.white} />}</View>
+      </Pressable>}
       <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginVertical: 10 }}>{['Позвони мне', 'Не могу говорить', 'Встреть меня'].map(note => <Pressable key={note} accessibilityRole="button" accessibilityLabel={t(note)} disabled={busy} onPress={() => setSosNote(t(note))} style={s.sosQuickNote}><Text style={s.blueText}>{t(note)}</Text></Pressable>)}</View>
-      <Text style={s.rowSubtitle}>{recipients.length ? recipients.map(person => person.name).join(', ') : t('Вы ещё не добавили контакты.')}</Text>
+      {!!recipients.length && <Text numberOfLines={1} style={s.rowSubtitle}>{recipients.map(person => person.name).join(', ')}</Text>}
       {fail}
-      <View style={{ marginTop: 18 }}><ActionButton title={t('Отправить SOS')} danger icon="alert-circle" busy={busy} disabled={!recipients.some(person => person.peerId)} onPress={() => send()} /></View>
+      <View style={{ marginTop: 18 }}><ActionButton title={t('Отправить SOS')} danger icon="alert-circle" busy={busy} disabled={!sosRecipientIds.length} onPress={() => send()} /></View>
       {locationUnavailable && <ActionButton title={t('Отправить без геопозиции')} secondary busy={busy} onPress={() => send(false)} />}
-      {!recipients.length && <ActionButton title={t('Добавить контакт')} secondary onPress={() => setDialog('addContact')} />}
       </>}
     </ModalSheet>
     <ModalSheet visible={dialog === 'places'} title={t("Мои места")} onClose={close}>

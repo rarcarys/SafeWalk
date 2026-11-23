@@ -6,6 +6,9 @@ test('expired session opens a dismissible popup above the sign-in form', { timeo
   const browser = await chromium.launch({ channel: 'chrome', headless: true });
   t.after(() => browser.close());
   const context = await browser.newContext({ viewport: { width: 390, height: 844 } });
+  await context.addInitScript(() => {
+    localStorage.setItem('safewalk.last-user', JSON.stringify({ id: 'expired-user', name: 'Expired User' }));
+  });
   await context.route('**/api/auth/me', route => route.fulfill({
     status: 401, json: { message: 'Требуется вход' },
   }));

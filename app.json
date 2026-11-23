@@ -3,6 +3,7 @@
     "name": "SafeWalk",
     "slug": "safewalk",
     "version": "1.0.0",
+    "icon": "./assets/app-icon.png",
     "orientation": "portrait",
     "userInterfaceStyle": "automatic",
     "experiments": {
@@ -21,7 +22,11 @@
     },
     "android": {
       "package": "com.safewalk.local",
-      "softwareKeyboardLayoutMode": "resize"
+      "softwareKeyboardLayoutMode": "resize",
+      "adaptiveIcon": {
+        "foregroundImage": "./assets/app-icon-foreground.png",
+        "backgroundColor": "#20A464"
+      }
     },
     "web": {
       "bundler": "metro",
@@ -40,6 +45,23 @@
       ],
       "expo-font",
       "expo-asset",
+      [
+        "expo-audio",
+        {
+          "microphonePermission": "SafeWalk записывает до 15 секунд аудио только после отправки SOS и только с вашего согласия.",
+          "recordAudioAndroid": true,
+          "enableBackgroundRecording": false,
+          "enableBackgroundPlayback": false
+        }
+      ],
+      [
+        "expo-image-picker",
+        {
+          "photosPermission": "Разрешите SafeWalk выбрать фотографию для аватара.",
+          "cameraPermission": "Разрешите SafeWalk сделать фотографию для аватара.",
+          "microphonePermission": "SafeWalk использует микрофон только для включённой вами записи SOS."
+        }
+      ],
       "expo-secure-store",
       "./plugins/with-personal-signing.cjs",
       "expo-notifications",

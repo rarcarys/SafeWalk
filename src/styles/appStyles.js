@@ -442,7 +442,7 @@ export function createAppStyles(colors, fontScale) {
     borderColor: colors.line,
   },
   mobileTripPanel: { maxHeight: '55%' },
-  mapSearchDock: { flexShrink: 0, backgroundColor: colors.surface, borderTopLeftRadius: 22, borderTopRightRadius: 22, paddingHorizontal: 14, paddingBottom: 10, borderTopWidth: 1, borderColor: colors.line },
+  mapSearchDock: { position: 'absolute', zIndex: 1002, left: 10, right: 10, bottom: 10, backgroundColor: colors.surface, borderRadius: 18, padding: 8, borderWidth: 1, borderColor: colors.line, shadowColor: '#000', shadowOpacity: 0.14, shadowRadius: 12, shadowOffset: { width: 0, height: 4 }, elevation: 8 },
   dockHandleTouch: { height: 22, justifyContent: 'center' },
   dockSearchRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
   dockSearchField: { flex: 1, minWidth: 0, minHeight: 50, backgroundColor: colors.control, borderRadius: 14, paddingLeft: 12, paddingRight: 2, gap: 6, flexDirection: 'row', alignItems: 'center' },

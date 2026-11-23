@@ -17,8 +17,7 @@ test('mobile auth fields remain reachable above an overlay keyboard', { timeout:
     let loginAttempts = 0;
     await page.route('**/api/auth/login', r => { loginAttempts++; return r.fulfill({ status: 401, json: { message: 'Неверный пароль' } }); });
     await page.goto('http://localhost:8081');
-    await page.getByRole('dialog').waitFor();
-    await page.getByRole('button', { name: 'Войти', exact: true }).last().click();
+    await page.getByRole('tab', { name: 'Вход', exact: true }).waitFor();
     const visibleAboveKeyboard = async locator => {
       await expect.poll(async () => {
         const rect = await locator.boundingBox();

@@ -1,6 +1,15 @@
 import * as Location from 'expo-location';
 import { Linking, Platform } from 'react-native';
+import { readLocal, writeLocal } from './localStore';
 const locationError = (message, code) => Object.assign(new Error(message), { code });
+export async function requestInitialLocationPermission(ownerId) {
+  if (Platform.OS === 'web' || !ownerId) return;
+  const key = `location-permission-asked:${ownerId}`;
+  if (await readLocal(key, false)) return;
+  const current = await Location.getForegroundPermissionsAsync();
+  if (current.status === 'undetermined') await Location.requestForegroundPermissionsAsync();
+  await writeLocal(key, true);
+}
 export async function openLocationSettings(reason) {
   if (Platform.OS === 'web') return false;
   if (Platform.OS === 'android' && reason === 'LOCATION_DISABLED') {

@@ -28,6 +28,7 @@ export default function RoutePlanner({ planning, dialog, onChoosePlaces, onMore 
       <IconButton icon="search" label={t('Найти адрес')} onPress={search} disabled={planning.searchBusy} />
     </View>
     </View>
+    {!target && <ActionButton title={t('Выбрать точку на карте')} icon="map-pin" secondary onPress={() => { Keyboard.dismiss(); planning.setPickingOrigin(false); planning.setCollapsed(true); }} />}
     <PlaceShortcuts planning={planning} onManage={onChoosePlaces} />
     {target && <>
       <Text style={s.plannerSectionTitle}>{t('Как добираемся')}</Text>

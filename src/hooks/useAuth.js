@@ -13,9 +13,18 @@ export default function useAuth() {
   }), []);
   useEffect(() => {
     let mounted = true;
-    restoreSession()
+    let cachedUser = null;
+    readLocal('last-user').catch(() => null)
+      .then(cached => {
+        cachedUser = cached;
+        return restoreSession();
+      })
       .then((account) => {
-        if (mounted) { setUser(account); if (account) writeLocal('last-user', account).catch(() => {}); }
+        if (mounted) {
+          setUser(account);
+          if (account) writeLocal('last-user', account).catch(() => {});
+          else if (cachedUser) setSessionEnded(true);
+        }
       })
       .catch(async (failure) => {
         if (mounted) setAuthError(failure.message);

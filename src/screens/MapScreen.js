@@ -5,7 +5,6 @@ import IconButton from '../components/ui/IconButton';
 import RouteScreen from './RouteScreen';
 import RoutePlanner from '../components/maps/RoutePlanner';
 import Icon from '../components/ui/Icon';
-import PlaceShortcuts from '../components/PlaceShortcuts';
 import ActionButton from '../components/ui/ActionButton';
 import React from 'react';
 import { formatDuration } from '../services/duration.cjs';
@@ -57,6 +56,10 @@ export default function MapScreen({
             {routeState === 'pending' ? t('Ожидаем сопровождающего') : routeState === 'active' ? t("В пути") : origin.gps ? t("Моя геопозиция") : planning.pickingOrigin ? t("Нажмите на точку отправления") : origin.chosen ? t("Отправление выбрано") : t("Выберите точку отправления")}
           </Text>
         </View>}
+        {routeState === 'planned' && collapsed && !target && !planning.pickingOrigin && <View pointerEvents="none" style={s.mapStreet}>
+          <Icon name="map-pin" size={16} color={colors.blue} />
+          <Text style={s.mapStreetText}>{t('Нажмите на карту, чтобы поставить метку.')}</Text>
+        </View>}
         <IconButton icon={locationBusy ? 'clock' : 'crosshair'} label={t("Моё местоположение")} onPress={locate} style={s.locateButton} />
         {!desktop && !mapSearch && <Pressable accessibilityRole="button" accessibilityLabel={t(collapsed ? 'Показать маршрут' : 'Увеличить карту')} accessibilityState={{ expanded: collapsed }} onPress={toggleMap} style={({ pressed }) => [s.mapSizeButton, pressed && s.pressed]}>
           <Icon name={collapsed ? 'minimize-2' : 'maximize-2'} size={18} color={colors.ink} />
@@ -71,7 +74,6 @@ export default function MapScreen({
           </Pressable>}
       </View>
       {mapSearch && <View style={s.mapSearchDock}>
-        <View style={s.dockHandleTouch}><View style={s.sheetHandle} /></View>
         <View style={s.dockSearchRow}>
           <View style={s.dockSearchField}>
             <Icon name="search" size={21} color={colors.muted} />
@@ -79,13 +81,15 @@ export default function MapScreen({
             {!!planning.destination && <IconButton icon="x" label={t('Очистить адрес')} onPress={() => { planning.setDestination(''); planning.setTarget(null); planning.resetRoute(); }} />}
             <IconButton icon={planning.searchBusy ? 'clock' : 'arrow-right'} label={t('Найти адрес')} disabled={planning.searchBusy} onPress={search} />
           </View>
+          {planning.places.some(item => item.slot === 'home') && <IconButton icon="home" label={t('Быстрый маршрут домой')} disabled={!planning.ready || planning.mapBusy || planning.locationBusy} onPress={planning.quickHome} style={s.dockRouteButton} />}
         </View>
-        {!target && <View style={s.dockCity}><Icon name="map-pin" size={12} color={colors.muted} /><TextInput accessibilityLabel={t('Город поиска')} value={planning.searchCity} onChangeText={planning.changeSearchCity} style={s.dockCityInput} placeholder={t('Например, Алматы')} placeholderTextColor={colors.muted} /></View>}
-        <PlaceShortcuts planning={planning} onManage={() => setDialog('places')} />
         {!!planning.mapError && dialogs.dialog !== 'search' && <Text accessibilityRole="alert" style={s.mapError}>{planning.mapError}</Text>}
         {target && <View style={s.dockDestination}>
           {route && <Text style={[s.rowSubtitle, { paddingVertical: 8 }]}>{formatDuration(planning.duration, t)} · {planning.distance}</Text>}
-          <View style={s.primaryActionRow}><View style={s.flex}><ActionButton title={t(route ? 'Начать поездку' : 'Построить маршрут')} busy={planning.mapBusy || planning.locationBusy} disabled={!planning.ready} onPress={() => { Keyboard.dismiss(); planning.start(); }} icon="navigation" /></View><IconButton icon="more-horizontal" label={t('Ещё')} onPress={() => setDialog('placeActions')} style={s.secondaryActionIcon} /></View>
+          <View style={s.primaryActionRow}>
+            <View style={s.flex}><ActionButton title={t(route ? 'Начать поездку' : 'Построить маршрут')} busy={planning.mapBusy || planning.locationBusy} disabled={!planning.ready} onPress={() => { Keyboard.dismiss(); planning.start(); }} icon="navigation" /></View>
+            <View style={s.flex}><ActionButton title={t('Сохранить адрес')} secondary icon="bookmark" onPress={() => setDialog('saveAddress')} /></View>
+          </View>
         </View>}
       </View>}
       {!desktop && collapsed && !mapSearch && <View style={s.compactTripBar}>

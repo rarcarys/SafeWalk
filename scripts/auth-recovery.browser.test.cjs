@@ -11,8 +11,7 @@ test('recovery uses auth styling and preserves the two-step reset flow', { timeo
     await page.route('**/api/auth/me', r => r.fulfill({ status: 401, json: { message: 'Войдите снова' } }));
     await page.route('**/api/auth/account/recover', r => { submitted = r.request().postDataJSON(); return r.fulfill({ status: 200, json: { ok: true } }); });
     await page.goto('http://localhost:8081');
-    await page.getByRole('dialog').waitFor();
-    await page.getByRole('button', { name: 'Войти', exact: true }).last().click();
+    await page.getByRole('tab', { name: 'Вход', exact: true }).waitFor();
     await page.getByRole('button', { name: 'Забыли пароль?', exact: true }).click();
     const dialog = page.getByRole('dialog', { name: 'Восстановить доступ', exact: true });
     await expect(dialog).toBeVisible();

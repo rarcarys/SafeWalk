@@ -77,7 +77,8 @@ test('saved route, readiness, low battery warning and one-tap arrival', { timeou
   await page.getByRole('button', { name: 'Выбрать: Дом', exact: true }).last().click();
   fs.mkdirSync('.preview', { recursive: true });
   await page.screenshot({ path: '.preview/mobile-expanded-map.png', fullPage: true });
-  await page.getByRole('button', { name: 'Показать маршрут', exact: true }).first().click();
+  const showRouteAfterPlace = page.getByRole('button', { name: 'Показать маршрут', exact: true }).first();
+  if (await showRouteAfterPlace.count()) await showRouteAfterPlace.click();
   await page.getByRole('button', { name: 'Мои места', exact: true }).click();
   await page.getByRole('button', { name: 'Повторить маршрут: Учёба', exact: true }).click();
   await page.getByRole('button', { name: 'Разрешить и построить', exact: true }).click();
@@ -139,6 +140,8 @@ test('saved route, readiness, low battery warning and one-tap arrival', { timeou
   await page.getByRole('button', { name: 'Разрешить и построить', exact: true }).click();
   await page.getByRole('button', { name: 'Начать поездку', exact: true }).click();
   await page.getByText('Готовность к поездке', { exact: true }).waitFor();
+  await page.getByRole('button', { name: 'Готовность к поездке', exact: true }).click();
+  await page.getByRole('button', { name: 'Проверить готовность', exact: true }).click();
   await page.getByText('Связь с сервером: доступна', { exact: true }).waitFor();
   await page.getByText('Заряд: 15%', { exact: true }).waitFor();
   fs.mkdirSync('.preview', { recursive: true });
@@ -150,6 +153,7 @@ test('saved route, readiness, low battery warning and one-tap arrival', { timeou
   await page.getByRole('button', { name: 'Увеличить карту', exact: true }).first().click();
   await page.getByText('Study', { exact: true }).first().waitFor();
   await page.getByRole('button', { name: 'Я на месте', exact: true }).click();
+  await page.getByRole('button', { name: 'Да, я на месте', exact: true }).click();
   await page.getByRole('button', { name: 'Показать маршрут', exact: true }).first().click();
   await page.getByText('Прибытие подтверждено', { exact: true }).first().waitFor();
   assert.equal((await call('journeys/state', account.token)).body.active, null);
@@ -233,11 +237,12 @@ test('two browser sessions: account, contact consent, live chat, offline queue a
   await b.page.getByText('Queued browser message', { exact: true }).waitFor({ timeout: 20000 });
   const origin = { name: 'Start', latitude: 43, longitude: 76 }, target = { name: 'Home', latitude: 43.01, longitude: 76.01 };
   const started = await call('journeys', alice.token, { clientId: 'browser_journey_key', origin, target, transport: 'walk', minutes: 10, accompanied: true, route: { distance: 1000, duration: 600, coordinates: [origin, target] } });
-  assert.equal(started.body.journey.status, 'pending');
+  assert.equal(started.body.journey.status, 'active');
+  assert.equal(started.body.journey.recipients[0].consent, 'pending');
   await b.page.getByRole('tab', { name: 'Маршруты', exact: true }).click();
   await b.page.getByRole('button', { name: 'Поездка: Alice Updated', exact: true }).click();
-  await b.page.getByText('Ожидаем сопровождающего', { exact: true }).last().waitFor();
-  await b.page.getByRole('button', { name: 'Принять сопровождение', exact: true }).click();
+  await b.page.getByText('Поездка уже началась. Сообщите, если вы следите за поездкой.', { exact: true }).waitFor();
+  await b.page.getByRole('button', { name: 'Слежу за поездкой', exact: true }).click();
   assert.equal((await call('journeys/state', alice.token)).body.active.status, 'active');
   assert.deepEqual(errors, []);
 });

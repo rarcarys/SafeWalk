@@ -14,8 +14,7 @@ test('stoat with scarf follows text and covers eyes for passwords', { timeout: 9
     page.on('request', request => { if (/rive|\.wasm/.test(request.url()) && !request.url().startsWith('http://localhost:8081/')) externalRequests.push(request.url()); });
     await context.route('**/api/auth/me', route => route.fulfill({ status: 401, json: { message: 'Войдите снова' } }));
     await page.goto('http://localhost:8081');
-    await page.getByRole('dialog').waitFor();
-    await page.getByRole('button', { name: 'Войти', exact: true }).last().click();
+    await page.getByRole('tab', { name: 'Вход', exact: true }).waitFor();
     await page.getByRole('tab', { name: 'Регистрация', exact: true }).click();
     await expect(page.getByTestId('firefly-idle')).toHaveAttribute('data-ready', 'ready', { timeout: 30000 });
     const canvas = page.getByTestId('firefly-canvas');

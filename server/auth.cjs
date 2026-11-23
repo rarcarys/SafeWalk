@@ -61,6 +61,7 @@ async function createAuthService({ databasePath, databaseUrl, databaseSchema, or
     next();
   });
   app.use(cors({ origin: origins, credentials: true, allowedHeaders: ['Content-Type', 'Authorization', 'X-SafeWalk-Client', 'X-SafeWalk-Owner'] }));
+  app.use('/api/auth/journeys/sos/evidence', express.json({ limit: '900kb' }));
   app.use('/api/auth/journeys', express.json({ limit: '128kb' }));
   app.use('/api/auth/account/avatar', express.json({ limit: '1450kb' }));
   app.use(express.json({ limit: '8kb' }));

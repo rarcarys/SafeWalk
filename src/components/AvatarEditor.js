@@ -98,7 +98,7 @@ export default function AvatarEditor({ user, onUpdateUser }) {
         {photoInfo && <Text style={s.rowSubtitle}>{photoInfo.width} × {photoInfo.height}{typeof photoInfo.fileSize === 'number' ? ` · ${(photoInfo.fileSize / 1024 / 1024).toFixed(2)} МБ` : ` · ${t('Размер файла неизвестен')}`}</Text>}
       </View>
       <View style={{ flexDirection: 'row', gap: 12, paddingVertical: 20 }}>
-        {[['gallery', 'image', 'Галерея'], ['camera', 'camera', 'Камера']].map(([source, icon, label]) => <Pressable key={source} accessibilityRole="button" accessibilityState={{ disabled: busy }} disabled={busy} onPress={() => upload(source)} style={({ pressed }) => ({ flex: 1, flexDirection: 'row', justifyContent: 'center', alignItems: 'center', gap: 8, minHeight: 48, borderRadius: 14, backgroundColor: colors.control, opacity: busy || pressed ? 0.5 : 1 })}>
+        {[['gallery', 'image', 'Галерея'], ['camera', 'camera', 'Камера']].map(([source, icon, label]) => <Pressable key={source} accessibilityRole="button" accessibilityLabel={t(label)} accessibilityState={{ disabled: busy }} disabled={busy} onPress={() => upload(source)} style={({ pressed }) => ({ flex: 1, flexDirection: 'row', justifyContent: 'center', alignItems: 'center', gap: 8, minHeight: 48, borderRadius: 14, backgroundColor: colors.control, opacity: busy || pressed ? 0.5 : 1 })}>
           <Icon name={icon} size={20} color={colors.blue} /><Text style={{ color: colors.blue }}>{t(label)}</Text>
         </Pressable>)}
       </View>
@@ -114,7 +114,7 @@ export default function AvatarEditor({ user, onUpdateUser }) {
         {(draft !== null || user.avatar) && <Pressable accessibilityRole="button" accessibilityLabel={t('Удалить аватар')} disabled={busy} accessibilityState={{ disabled: busy }} onPress={confirmRemove} style={({ pressed }) => ({ flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, minHeight: 48, paddingHorizontal: 14, borderRadius: 14, backgroundColor: colors.control, opacity: busy || pressed ? 0.5 : 1 })}>
           <Icon name="trash-2" size={18} color={colors.ink} /><Text style={{ color: colors.ink }}>{t('Удалить')}</Text>
         </Pressable>}
-        <View style={{ flex: 1 }}><ActionButton title={t('Сохранить')} busy={busy} disabled={draft === (user.avatar || null)} onPress={() => save()} /></View>
+        <View style={{ flex: 1 }}><ActionButton title={t('Сохранить аватар')} busy={busy} disabled={draft === (user.avatar || null)} onPress={() => save()} /></View>
       </View>
     </ModalSheet>
   </>;

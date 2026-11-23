@@ -90,6 +90,7 @@ test('SOS interrupts dialogs and active chats, persists, queues and requires a s
   assert.equal(sentBody.note, 'Не могу говорить');
   assert.equal(sentBody.includeLocation, true);
   assert.equal(sentBody.position.latitude, 43.24);
+  assert.equal(sentBody.recipientIds.length, 1);
   await page.getByRole('button', { name: 'Отправить SOS', exact: true }).waitFor({ state: 'hidden' });
   await page.evaluate(() => {
     const query = navigator.permissions.query.bind(navigator.permissions);
